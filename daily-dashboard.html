@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#211C16">
+<title>Operator — Daily Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  :root{
+    --bg:#211C16;
+    --bg-raise:#2A241B;
+    --line: rgba(243,238,226,0.09);
+    --text:#F3EEE2;
+    --muted:#9C9284;
+    --gold:#D4A24E;
+    --red:#A8542E;
+    --yellow:#C9922E;
+    --green:#5E7A4A;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .app{max-width:480px;margin:0 auto;padding:24px 20px 80px;}
+
+  header.top{display:flex;justify-content:space-between;align-items:flex-start;}
+  .date{font-size:14px;color:var(--muted);letter-spacing:.02em;}
+  .streak{display:flex;align-items:baseline;gap:6px;font-family:'Fraunces',serif;font-weight:600;font-size:20px;color:var(--gold);}
+  .streak span.label{font-family:'Space Grotesk',sans-serif;font-weight:400;font-size:12px;color:var(--muted);}
+  button.icon-btn{background:none;border:1px solid var(--line);color:var(--muted);width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  button.icon-btn:active{background:var(--bg-raise);}
+
+  .hero{margin:36px 0 28px;display:flex;align-items:center;gap:22px;}
+  .ring-wrap{position:relative;width:118px;height:118px;flex:none;}
+  .ring-wrap svg{transform:rotate(-90deg);}
+  .ring-track{fill:none;stroke:var(--line);stroke-width:9;}
+  .ring-fill{fill:none;stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset .6s cubic-bezier(.4,0,.2,1), stroke .3s ease;}
+  .ring-number{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:32px;font-weight:600;}
+  .hero-copy .status-word{font-size:13px;font-weight:600;letter-spacing:.02em;margin-bottom:4px;}
+  .hero-copy .rank-line{font-family:'Fraunces',serif;font-size:19px;font-weight:600;color:var(--text);}
+  .hero-copy .rank-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+
+  .motto{font-family:'Fraunces',serif;font-style:italic;font-size:14px;color:var(--muted);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0;margin-bottom:8px;}
+
+  .activity{border-bottom:1px solid var(--line);padding:20px 0 20px 16px;position:relative;}
+  .activity::before{content:'';position:absolute;left:0;top:20px;bottom:20px;width:3px;border-radius:2px;background:var(--bar-color, var(--muted));}
+  .activity-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .activity-name{display:flex;align-items:center;gap:10px;font-weight:500;font-size:15px;}
+  .activity-name svg{width:18px;height:18px;stroke:var(--muted);flex:none;}
+  .activity-time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;white-space:nowrap;}
+  .bar-track{height:6px;border-radius:3px;background:rgba(255,255,255,0.07);overflow:hidden;margin-bottom:12px;}
+  .bar-fill{height:100%;border-radius:3px;transition:width .5s ease, background .3s ease;}
+  .row-bottom{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+  .status-tag{font-size:11px;font-weight:600;letter-spacing:.02em;padding:3px 9px;border-radius:999px;border:1px solid var(--line);}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;}
+  .chip{background:none;border:1px solid var(--line);color:var(--text);padding:6px 11px;border-radius:999px;font-family:'Space Grotesk',sans-serif;font-size:12.5px;cursor:pointer;}
+  .chip:active{background:var(--bg-raise);}
+  .pulse{animation:pulse .7s ease;}
+  @keyframes pulse{0%{background:rgba(94,122,74,0.18);}100%{background:transparent;}}
+
+  .history{margin-top:28px;}
+  .history-label{font-size:12px;color:var(--muted);margin-bottom:10px;}
+  .dots{display:flex;gap:8px;}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--line);}
+  .dot-day{font-size:10px;color:var(--muted);text-align:center;margin-top:5px;}
+  .dotcol{display:flex;flex-direction:column;align-items:center;gap:0;}
+
+  footer.tail{margin-top:34px;font-size:12px;color:var(--muted);text-align:left;}
+
+  /* settings */
+  .overlay{position:fixed;inset:0;background:rgba(20,17,13,0.72);display:none;align-items:flex-end;justify-content:center;z-index:20;}
+  .overlay.open{display:flex;}
+  .sheet{background:var(--bg-raise);width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:22px 20px 34px;max-height:82vh;overflow-y:auto;}
+  .sheet h2{font-family:'Fraunces',serif;font-size:20px;font-weight:600;margin:0 0 4px;}
+  .sheet p.sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  .cfg-row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);}
+  .cfg-row input[type=text]{flex:1;background:none;border:none;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:14px;}
+  .cfg-row input[type=number]{width:56px;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:6px;font-family:'Space Grotesk',sans-serif;text-align:center;}
+  .cfg-row .unit{font-size:11px;color:var(--muted);}
+  .cfg-row .del{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px 6px;}
+  .add-form{display:flex;gap:8px;margin-top:16px;}
+  .add-form input[type=text]{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:13px;}
+  .add-form input[type=number]{width:64px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 6px;color:var(--text);text-align:center;}
+  .primary-btn{width:100%;margin-top:20px;background:var(--gold);color:#211C16;border:none;border-radius:10px;padding:13px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;cursor:pointer;}
+  .close-btn{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
+  .sheet{position:relative;}
+
+  .skeleton{opacity:.35;}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;animation:none !important;}
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="top">
+    <div>
+      <div class="date" id="dateLabel">Loading…</div>
+      <div class="streak" id="streakLabel">— <span class="label">day streak</span></div>
+    </div>
+    <button class="icon-btn" id="settingsBtn" aria-label="Edit goals">⚙</button>
+  </header>
+
+  <div class="hero">
+    <div class="ring-wrap">
+      <svg width="118" height="118" viewBox="0 0 118 118">
+        <circle class="ring-track" cx="59" cy="59" r="50"></circle>
+        <circle class="ring-fill" id="ringFill" cx="59" cy="59" r="50"></circle>
+      </svg>
+      <div class="ring-number" id="ringNumber">–</div>
+    </div>
+    <div class="hero-copy">
+      <div class="status-word" id="statusWord">—</div>
+      <div class="rank-line" id="rankLine">—</div>
+      <div class="rank-sub" id="rankSub">—</div>
+    </div>
+  </div>
+
+  <div class="motto">"Discipline today, freedom tomorrow."</div>
+
+  <div id="activityList"></div>
+
+  <div class="history">
+    <div class="history-label">Last 7 days</div>
+    <div class="dots" id="historyDots"></div>
+  </div>
+
+  <footer class="tail">Time logged here is what actually moves the 2032 plan forward. Log it when you do it, not at the end of the day.</footer>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <button class="close-btn" id="closeSettings">✕</button>
+    <h2>Edit goals</h2>
+    <p class="sub">Adjust daily targets as your phase changes.</p>
+    <div id="cfgList"></div>
+    <div class="add-form">
+      <input type="text" id="newName" placeholder="New activity">
+      <input type="number" id="newTarget" placeholder="min">
+      <button class="chip" id="addActivityBtn" style="white-space:nowrap;">Add</button>
+    </div>
+    <button class="primary-btn" id="saveSettingsBtn">Done</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const ICONS = {
+    paint: '<path d="M12 2c-4 3-8 7-8 12a6 6 0 0 0 6 6c2 0 3-1 3-3 0-1-1-1.5-1-2.5A2.5 2.5 0 0 1 14.5 12H17a3 3 0 0 0 3-3c0-4-4-7-8-7z"/><circle cx="7.5" cy="10.5" r=".6"/><circle cx="9" cy="7" r=".6"/><circle cx="13" cy="6" r=".6"/>',
+    business: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    study: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+    training: '<path d="M6.5 6.5l11 11"/><path d="M5 8l3-3 2 2-3 3z"/><path d="M14 17l3-3 2 2-3 3z"/><path d="M3 10l2-2"/><path d="M19 16l2-2"/>',
+    family: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/><path d="M10 19v-5h4v5"/>',
+    content: '<path d="M15 8l5-3v14l-5-3"/><rect x="2" y="6" width="13" height="12" rx="2"/>',
+    default: '<circle cx="12" cy="12" r="8"/>'
+  };
+  function iconSvg(id){
+    return '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'+(ICONS[id]||ICONS.default)+'</svg>';
+  }
+
+  const DEFAULT_ACTIVITIES = [
+    {id:'paint',    name:'Painting & craft',   target:180},
+    {id:'business', name:'Business build',     target:120},
+    {id:'study',    name:'AVU & study',        target:60},
+    {id:'training', name:'Physical training',  target:60},
+    {id:'family',   name:'Family time',        target:120},
+    {id:'content',  name:'Content (for fun)',  target:30}
+  ];
+
+  const STATUS = {
+    red:    {color:'var(--red)',    word:'Behind'},
+    yellow: {color:'var(--yellow)', word:'Building'},
+    green:  {color:'var(--green)',  word:'On track'}
+  };
+  function statusFor(pct){
+    if(pct >= 100) return 'green';
+    if(pct >= 10) return 'yellow';
+    return 'red';
+  }
+  function fmtMin(min){
+    const h = Math.floor(min/60), m = min%60;
+    if(h<=0) return m+'m';
+    if(m===0) return h+'h';
+    return h+'h '+m+'m';
+  }
+  function todayStr(d){
+    d = d || new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function dateMinus(n){
+    const d = new Date();
+    d.setDate(d.getDate()-n);
+    return d;
+  }
+
+  let config = null;   // {activities:[...]}
+  let log = {};         // {activityId: minutes}
+  let history = {};      // {dateStr: {score, status}}
+  const today = todayStr();
+  const celebrated = new Set();
+
+  async function safeGet(key, shared){
+    try{
+      const r = await window.storage.get(key, !!shared);
+      return r ? r.value : null;
+    }catch(e){ return null; }
+  }
+  async function safeSet(key, value, shared){
+    try{ await window.storage.set(key, value, !!shared); }catch(e){ /* best effort */ }
+  }
+
+  async function loadAll(){
+    const cfgRaw = await safeGet('config');
+    config = cfgRaw ? JSON.parse(cfgRaw) : {activities: DEFAULT_ACTIVITIES};
+    if(!cfgRaw) await safeSet('config', JSON.stringify(config));
+
+    const logRaw = await safeGet('log:'+today);
+    log = logRaw ? JSON.parse(logRaw) : {};
+
+    const histRaw = await safeGet('history');
+    history = histRaw ? JSON.parse(histRaw) : {};
+
+    render();
+  }
+
+  function computeOverall(){
+    const acts = config.activities;
+    if(acts.length===0) return {pct:0,status:'red'};
+    let sum = 0;
+    acts.forEach(a=>{
+      const mins = log[a.id]||0;
+      const pct = a.target>0 ? Math.min(100,(mins/a.target)*100) : 0;
+      sum += pct;
+    });
+    const pct = Math.round(sum/acts.length);
+    return {pct, status: statusFor(pct)};
+  }
+
+  function rankFor(greenDays){
+    if(greenDays>=90) return {name:'Master', sub:greenDays+' on-track days total'};
+    if(greenDays>=30) return {name:'Relentless', sub:greenDays+' on-track days total'};
+    if(greenDays>=7)  return {name:'Operator', sub:greenDays+' on-track days total'};
+    return {name:'Apprentice', sub:greenDays+' on-track days total'};
+  }
+
+  function currentStreak(){
+    let n = 0;
+    for(let i=0; i<400; i++){
+      const ds = todayStr(dateMinus(i));
+      const entry = history[ds];
+      if(i===0){
+        const {status} = computeOverall();
+        if(status!=='green') { continue; }
+      } else {
+        if(!entry || entry.status!=='green') break;
+      }
+      n++;
+    }
+    return n;
+  }
+
+  function greenDayCount(){
+    return Object.values(history).filter(h=>h.status==='green').length;
+  }
+
+  async function persistTodayAndHistory(){
+    await safeSet('log:'+today, JSON.stringify(log));
+    const overall = computeOverall();
+    history[today] = {score: overall.pct, status: overall.status};
+    await safeSet('history', JSON.stringify(history));
+  }
+
+  function addTime(id, minutes){
+    log[id] = (log[id]||0) + minutes;
+    persistTodayAndHistory().then(render);
+  }
+
+  function render(){
+    document.getElementById('dateLabel').textContent = new Date().toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
+
+    const overall = computeOverall();
+    const s = STATUS[overall.status];
+    const streak = currentStreak();
+    document.getElementById('streakLabel').innerHTML = streak+' <span class="label">day streak</span>';
+
+    // ring
+    const r = 50, c = 2*Math.PI*r;
+    const ring = document.getElementById('ringFill');
+    ring.style.stroke = s.color;
+    ring.setAttribute('stroke-dasharray', c);
+    ring.setAttribute('stroke-dashoffset', c - (overall.pct/100)*c);
+    document.getElementById('ringNumber').textContent = overall.pct+'%';
+    document.getElementById('ringNumber').style.color = s.color;
+
+    document.getElementById('statusWord').textContent = s.word;
+    document.getElementById('statusWord').style.color = s.color;
+
+    const rank = rankFor(greenDayCount());
+    document.getElementById('rankLine').textContent = rank.name;
+    document.getElementById('rankSub').textContent = rank.sub;
+
+    // activities
+    const list = document.getElementById('activityList');
+    list.innerHTML = '';
+    config.activities.forEach(a=>{
+      const mins = log[a.id]||0;
+      const pct = a.target>0 ? Math.min(100,(mins/a.target)*100) : 0;
+      const rawPct = a.target>0 ? Math.round((mins/a.target)*100) : 0;
+      const st = statusFor(rawPct);
+      const stMeta = STATUS[st];
+
+      const wasCelebrated = celebrated.has(a.id);
+      if(st==='green' && !wasCelebrated) celebrated.add(a.id);
+
+      const row = document.createElement('div');
+      row.className = 'activity' + ((st==='green' && !wasCelebrated) ? ' pulse' : '');
+      row.style.setProperty('--bar-color', stMeta.color);
+      row.innerHTML = `
+        <div class="activity-head">
+          <div class="activity-name">${iconSvg(a.id)}<span>${a.name}</span></div>
+          <div class="activity-time">${fmtMin(mins)} / ${fmtMin(a.target)}</div>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${stMeta.color}"></div></div>
+        <div class="row-bottom">
+          <span class="status-tag" style="color:${stMeta.color};border-color:${stMeta.color}55;">${stMeta.word} · ${rawPct}%</span>
+          <div class="chips">
+            <button class="chip" data-id="${a.id}" data-min="15">+15m</button>
+            <button class="chip" data-id="${a.id}" data-min="30">+30m</button>
+            <button class="chip" data-id="${a.id}" data-min="60">+1h</button>
+          </div>
+        </div>
+      `;
+      list.appendChild(row);
+    });
+    list.querySelectorAll('.chip').forEach(btn=>{
+      btn.addEventListener('click', ()=> addTime(btn.dataset.id, parseInt(btn.dataset.min,10)));
+    });
+
+    // history dots, last 7 days
+    const dotsWrap = document.getElementById('historyDots');
+    dotsWrap.innerHTML = '';
+    for(let i=6;i>=0;i--){
+      const ds = todayStr(dateMinus(i));
+      const entry = i===0 ? {status: overall.status} : history[ds];
+      const col = document.createElement('div');
+      col.className = 'dotcol';
+      const dayLetter = new Date(dateMinus(i)).toLocaleDateString(undefined,{weekday:'narrow'});
+      const color = entry ? STATUS[entry.status].color : 'var(--line)';
+      col.innerHTML = `<div class="dot" style="background:${color}"></div><div class="dot-day">${dayLetter}</div>`;
+      dotsWrap.appendChild(col);
+    }
+  }
+
+  // settings sheet
+  const overlay = document.getElementById('overlay');
+  function openSettings(){
+    renderCfgList();
+    overlay.classList.add('open');
+  }
+  function closeSettings(){ overlay.classList.remove('open'); }
+  document.getElementById('settingsBtn').addEventListener('click', openSettings);
+  document.getElementById('closeSettings').addEventListener('click', closeSettings);
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeSettings(); });
+
+  function renderCfgList(){
+    const wrap = document.getElementById('cfgList');
+    wrap.innerHTML = '';
+    config.activities.forEach((a, idx)=>{
+      const row = document.createElement('div');
+      row.className = 'cfg-row';
+      row.innerHTML = `
+        <input type="text" value="${a.name}" data-idx="${idx}" data-field="name">
+        <input type="number" value="${a.target}" data-idx="${idx}" data-field="target">
+        <span class="unit">min/day</span>
+        <button class="del" data-idx="${idx}">×</button>
+      `;
+      wrap.appendChild(row);
+    });
+    wrap.querySelectorAll('input').forEach(inp=>{
+      inp.addEventListener('change', (e)=>{
+        const idx = +e.target.dataset.idx, field = e.target.dataset.field;
+        config.activities[idx][field] = field==='target' ? Math.max(0, parseInt(e.target.value,10)||0) : e.target.value;
+      });
+    });
+    wrap.querySelectorAll('.del').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        config.activities.splice(+e.target.dataset.idx,1);
+        renderCfgList();
+      });
+    });
+  }
+
+  document.getElementById('addActivityBtn').addEventListener('click', ()=>{
+    const nameEl = document.getElementById('newName'), targetEl = document.getElementById('newTarget');
+    const name = nameEl.value.trim();
+    const target = parseInt(targetEl.value,10)||0;
+    if(!name) return;
+    config.activities.push({id: 'a'+Date.now(), name, target});
+    nameEl.value=''; targetEl.value='';
+    renderCfgList();
+  });
+
+  document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
+    await safeSet('config', JSON.stringify(config));
+    closeSettings();
+    render();
+  });
+
+  loadAll();
+})();
+</script>
+</body>
+</html>
