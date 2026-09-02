@@ -36,7 +36,7 @@
   .date{font-size:14px;color:var(--muted);letter-spacing:.02em;}
   .streak{display:flex;align-items:baseline;gap:6px;font-family:'Fraunces',serif;font-weight:600;font-size:20px;color:var(--gold);}
   .streak span.label{font-family:'Space Grotesk',sans-serif;font-weight:400;font-size:12px;color:var(--muted);}
-  button.icon-btn{background:none;border:1px solid var(--line);color:var(--muted);width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  button.icon-btn{background:none;border:1px solid var(--line);color:var(--muted);width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
   button.icon-btn:active{background:var(--bg-raise);}
 
   .hero{margin:36px 0 28px;display:flex;align-items:center;gap:22px;}
@@ -153,10 +153,15 @@
   </div>
 </div>
 
+<!-- include Supabase JS (optional) and remote sync layer -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+<script src="/supabase-config.js"></script>
+<script src="/remote-sync.js"></script>
+
 <script>
 (function(){
   const ICONS = {
-    paint: '<path d="M12 2c-4 3-8 7-8 12a6 6 0 0 0 6 6c2 0 3-1 3-3 0-1-1-1.5-1-2.5A2.5 2.5 0 0 1 14.5 12H17a3 3 0 0 0 3-3c0-4-4-7-8-7z"/><circle cx="7.5" cy="10.5" r=".6"/><circle cx="9" cy="7" r=".6"/><circle cx="13" cy="6" r=".6"/>',
+    paint: '<path d="M12 2c-4 3-8 7-8 12a6 6 0 0 0 6 6c2 0 3-1 3-3 0-1-1-1.5-1-2.5A2.5 2.5 0 0 1 14.5 12H17a3 3 0 0 0 3-3c0-4-4-7-8-7z"/><circle cx="7.5" cy="10.5" r=".6"/><circle cx="9" cy="7" r=".6"/>',
     business: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
     study: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
     training: '<path d="M6.5 6.5l11 11"/><path d="M5 8l3-3 2 2-3 3z"/><path d="M14 17l3-3 2 2-3 3z"/><path d="M3 10l2-2"/><path d="M19 16l2-2"/>',
@@ -205,21 +210,62 @@
 
   let config = null;   // {activities:[...]}
   let log = {};         // {activityId: minutes}
-  let history = {};      // {dateStr: {score, status}}
+  let history = {};      // {dateStr: {score, status}};
   const today = todayStr();
   const celebrated = new Set();
 
-  async function safeGet(key, shared){
+  async function safeGetFromWindowStorage(key){
     try{
-      const r = await window.storage.get(key, !!shared);
-      return r ? r.value : null;
-    }catch(e){ return null; }
-  }
-  async function safeSet(key, value, shared){
-    try{ await window.storage.set(key, value, !!shared); }catch(e){ /* best effort */ }
+      if(window.storage && typeof window.storage.get === 'function'){
+        const r = await window.storage.get(key);
+        return r ? r.value : null;
+      }
+    }catch(e){ }
+    return null;
   }
 
+  async function safeGet(key, shared){
+    const fromWin = await safeGetFromWindowStorage(key);
+    if(fromWin !== null && fromWin !== undefined) return fromWin;
+    try{ const v = localStorage.getItem(key); return v !== null ? v : null; }catch(e){ return null; }
+  }
+
+  async function safeSet(key, value, shared){
+    try{ if(window.storage && typeof window.storage.set === 'function') await window.storage.set(key, value); }catch(e){}
+    try{ localStorage.setItem(key, value); }catch(e){}
+  }
+
+  async function migrateFromWindowStorage(keys){
+    try{
+      if(!(window.storage && typeof window.storage.get === 'function')) return;
+      for(const key of keys){
+        try{
+          const winVal = await safeGetFromWindowStorage(key);
+          const localVal = localStorage.getItem(key);
+          if(winVal !== null && localVal === null){ localStorage.setItem(key, winVal); }
+        }catch(e){}
+      }
+    }catch(e){}
+  }
+
+  // --- remote sync hooks (no-op if remote not configured) ---
+  // remote-sync.js exposes window.remoteSync.saveAll and window.remoteSync.loadAll
+  async function remoteSaveAll(){
+    if(window.remoteSync && typeof window.remoteSync.saveAll === 'function'){
+      try{ await window.remoteSync.saveAll({date: today, log, config, history}); }catch(e){ /* ignore sync errors */ }
+    }
+  }
+  async function remoteLoadAll(){
+    if(window.remoteSync && typeof window.remoteSync.loadAll === 'function'){
+      try{ return await window.remoteSync.loadAll({date: today}); }catch(e){ return null; }
+    }
+    return null;
+  }
+  // ----------------------------------------------------------
+
   async function loadAll(){
+    await migrateFromWindowStorage(['config','history','log:'+today]);
+
     const cfgRaw = await safeGet('config');
     config = cfgRaw ? JSON.parse(cfgRaw) : {activities: DEFAULT_ACTIVITIES};
     if(!cfgRaw) await safeSet('config', JSON.stringify(config));
@@ -230,6 +276,25 @@
     const histRaw = await safeGet('history');
     history = histRaw ? JSON.parse(histRaw) : {};
 
+    // attempt remote merge
+    const remote = await remoteLoadAll();
+    if(remote){
+      // merge config: prefer remote config if exists
+      if(remote.config) config = remote.config;
+      // merge log: take per-activity max so accidental overwrites don't lose time
+      if(remote.log){ for(const k of Object.keys(remote.log)){ log[k] = Math.max(log[k]||0, remote.log[k]||0); } }
+      // merge history: take remote entries (remote wins)
+      if(remote.history){ history = Object.assign({}, history, remote.history); }
+    }
+
+    // persist merged
+    await safeSet('config', JSON.stringify(config));
+    await safeSet('log:'+today, JSON.stringify(log));
+    await safeSet('history', JSON.stringify(history));
+
+    // also attempt to push merged state remotely
+    remoteSaveAll().then(()=>{});
+
     render();
   }
 
@@ -237,11 +302,7 @@
     const acts = config.activities;
     if(acts.length===0) return {pct:0,status:'red'};
     let sum = 0;
-    acts.forEach(a=>{
-      const mins = log[a.id]||0;
-      const pct = a.target>0 ? Math.min(100,(mins/a.target)*100) : 0;
-      sum += pct;
-    });
+    acts.forEach(a=>{ const mins = log[a.id]||0; const pct = a.target>0 ? Math.min(100,(mins/a.target)*100) : 0; sum += pct; });
     const pct = Math.round(sum/acts.length);
     return {pct, status: statusFor(pct)};
   }
@@ -258,30 +319,29 @@
     for(let i=0; i<400; i++){
       const ds = todayStr(dateMinus(i));
       const entry = history[ds];
-      if(i===0){
-        const {status} = computeOverall();
-        if(status!=='green') { continue; }
-      } else {
-        if(!entry || entry.status!=='green') break;
-      }
+      if(i===0){ const {status} = computeOverall(); if(status!=='green') { continue; } }
+      else { if(!entry || entry.status!=='green') break; }
       n++;
     }
     return n;
   }
 
-  function greenDayCount(){
-    return Object.values(history).filter(h=>h.status==='green').length;
-  }
+  function greenDayCount(){ return Object.values(history).filter(h=>h.status==='green').length; }
 
   async function persistTodayAndHistory(){
     await safeSet('log:'+today, JSON.stringify(log));
     const overall = computeOverall();
     history[today] = {score: overall.pct, status: overall.status};
     await safeSet('history', JSON.stringify(history));
+    // push to remote as well (best-effort)
+    remoteSaveAll().then(()=>{});
   }
 
   function addTime(id, minutes){
-    log[id] = (log[id]||0) + minutes;
+    // minutes may be negative for decreases
+    const current = log[id]||0;
+    const next = Math.max(0, current + minutes);
+    log[id] = next;
     persistTodayAndHistory().then(render);
   }
 
@@ -337,6 +397,9 @@
             <button class="chip" data-id="${a.id}" data-min="15">+15m</button>
             <button class="chip" data-id="${a.id}" data-min="30">+30m</button>
             <button class="chip" data-id="${a.id}" data-min="60">+1h</button>
+            <button class="chip" data-id="${a.id}" data-min="-15">-15m</button>
+            <button class="chip" data-id="${a.id}" data-min="-30">-30m</button>
+            <button class="chip" data-id="${a.id}" data-min="-60">-1h</button>
           </div>
         </div>
       `;
@@ -363,10 +426,7 @@
 
   // settings sheet
   const overlay = document.getElementById('overlay');
-  function openSettings(){
-    renderCfgList();
-    overlay.classList.add('open');
-  }
+  function openSettings(){ renderCfgList(); overlay.classList.add('open'); }
   function closeSettings(){ overlay.classList.remove('open'); }
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeSettings').addEventListener('click', closeSettings);
@@ -393,10 +453,7 @@
       });
     });
     wrap.querySelectorAll('.del').forEach(btn=>{
-      btn.addEventListener('click', (e)=>{
-        config.activities.splice(+e.target.dataset.idx,1);
-        renderCfgList();
-      });
+      btn.addEventListener('click', (e)=>{ config.activities.splice(+e.target.dataset.idx,1); renderCfgList(); });
     });
   }
 
@@ -412,6 +469,8 @@
 
   document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
     await safeSet('config', JSON.stringify(config));
+    // push updated config remotely as well
+    remoteSaveAll().then(()=>{});
     closeSettings();
     render();
   });
