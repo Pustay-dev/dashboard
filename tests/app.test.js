@@ -5,6 +5,7 @@ globalThis.localStorage={getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v)
 globalThis.location={hash:'#today'};
 globalThis.window={scrollY:0,scrollTo(){},addEventListener(type,fn){listeners['window:'+type]=fn}};
 globalThis.document={querySelector:node,querySelectorAll:()=>[],addEventListener(type,fn){listeners['document:'+type]=fn},createElement(){return {click(){}}}};
+let fetchImplementation=globalThis.fetch;globalThis.fetch=(...args)=>fetchImplementation(...args);
 const originalInterval=globalThis.setInterval;globalThis.setInterval=()=>0;
 await import('../app.js');globalThis.setInterval=originalInterval;
 const html=()=>node('#app').innerHTML;
@@ -48,4 +49,10 @@ test('full Check-in plays the completion before redraw and preserves the complet
  listeners['window:hashchange']();assert.equal(html(),before);
  release();await pending;assert.equal(animations,2);assert(html().includes('data-activity-row="reading"'));assert.notEqual(html(),before);
  go('today');assert(!html().includes('data-activity-row="reading"'));
+});
+
+test('Settings displays the real connection failure instead of only saying offline',async()=>{
+ const originalFetch=fetchImplementation,OriginalFormData=globalThis.FormData;fetchImplementation=async()=>{throw new TypeError('Load failed')};
+ globalThis.FormData=class{get(){return 'test-only'}};go('settings');
+ try{await listeners['#app:submit']({preventDefault(){},target:{id:'cloud-form',querySelector:()=>({disabled:false})}});assert(html().includes('Network request failed'));assert(html().includes('Load failed'));assert(html().includes('cloud-error'))}finally{fetchImplementation=originalFetch;globalThis.FormData=OriginalFormData}
 });
