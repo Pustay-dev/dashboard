@@ -4,12 +4,12 @@ export function dayKey(date=new Date()){return new Intl.DateTimeFormat('en-CA',{
 export function shiftDay(d,n){const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)}
 export function weekday(d){return new Date(d+'T12:00:00Z').getUTCDay()}
 export function activeActivities(s){return s.activities.filter(a=>!a.archived)}
-export function checkPct(s){const a=activeActivities(s),total=a.reduce((n,x)=>n+(Number(x.target)||0),0);return total?pct(a.reduce((n,x)=>n+(Number(x.progress)||0),0)/total*100):0}
+export function checkPct(s){const a=activeActivities(s),total=a.reduce((n,x)=>n+(Number(x.target)||0),0);return total?pct(a.reduce((n,x)=>n+Math.min(Number(x.target)||0,Math.max(0,Number(x.progress)||0)),0)/total*100):0}
 export function normalizeCheck(s,today=dayKey()){
  s=clone(s);s.activities=Array.isArray(s.activities)?s.activities:[];
  const old=s.days?Object.values(s.days).at(-1)||{}:{};
  const start=s.lastDate||today;
- for(const a of s.activities){a.progress=Number(a.progress??old[a.id])||0;a.archived=!!a.archived;a.locked=!!a.locked;a.createdOn=a.createdOn||start}
+ for(const a of s.activities){a.progress=Math.min(Number(a.target)||0,Math.max(0,Number(a.progress??old[a.id])||0));a.archived=!!a.archived;a.locked=!!a.locked;a.createdOn=a.createdOn||start}
  delete s.days;s.pending=s.pending||[];s.history=s.history||{};s.todos=s.todos||[];
  for(const a of s.pending)a.scheduledFor=a.scheduledFor||(a.queuedOn?shiftDay(a.queuedOn,1):today);
  function activate(date){const due=s.pending.filter(a=>a.scheduledFor<=date);s.activities.push(...due.map(a=>({...a,createdOn:a.createdOn||a.queuedOn||a.scheduledFor,progress:Number(a.progress)||0,archived:false,locked:true})));s.pending=s.pending.filter(a=>a.scheduledFor>date)}

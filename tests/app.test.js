@@ -24,3 +24,14 @@ test('daily check-in sections follow requested order and use a smooth performanc
 test('quick task is added to the main activity list',async()=>{go('check-in');const Original=globalThis.FormData;globalThis.FormData=class{get(k){return {text:'Call printer',target:'10'}[k]}};try{await listeners['#app:submit']({preventDefault(){},target:{id:'todo-form'}})}finally{globalThis.FormData=Original}assert(record('check').activities.some(a=>a.name==='Call printer'&&a.target===10));go('today');assert(html().includes('Call printer'))});
 
 test('Today header has no affirmation and keeps a separate date control',()=>{go('today');assert(!html().includes('<blockquote'));assert(!html().includes('class="affirmation"'));assert(html().includes('class="date-picker"'));assert(html().includes('<h1>Today</h1>'))});
+
+test('completion caps time, hides Today task, and retains it in full Check-in for undo',async()=>{
+ go('today');const activity=record('check').activities.find(a=>a.name==='Call printer');assert(activity);
+ await click({activity:activity.id,delta:'30'});assert.equal(record('check').activities.find(a=>a.id===activity.id).progress,10);
+ assert(!html().includes('data-activity-row="'+activity.id+'"'));
+ go('check-in');assert(html().includes('data-activity-row="'+activity.id+'"'));assert(html().includes('activity-is-done'));
+ await click({activity:activity.id,delta:'30'});assert.equal(record('check').activities.find(a=>a.id===activity.id).progress,10);
+ await click({activity:activity.id,delta:'-15'});assert.equal(record('check').activities.find(a=>a.id===activity.id).progress,0);
+ go('today');assert(html().includes('data-activity-row="'+activity.id+'"'));
+ await click({completeActivity:activity.id});assert.equal(record('check').activities.find(a=>a.id===activity.id).progress,10);assert(!html().includes('data-activity-row="'+activity.id+'"'));
+});
