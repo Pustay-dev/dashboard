@@ -1,8 +1,8 @@
 import {ROADMAP} from './roadmap-data.js';
 import {PLAN,WEEK} from './workout-data.js';
 import {Records} from './storage.js';
-import {flickCompletedActivity} from './completion.js?v=20261019-5';
-import {clone,pct,dayKey,shiftDay,weekday,activeActivities,checkPct,normalizeCheck,roadPct,nextTasks,latestValues,canRemoveActivity,scheduleActivity,removeActivity,roadmapStatus,smoothPath} from './core.js?v=20261019-5';
+import {flickCompletedActivity} from './completion.js?v=20261019-6';
+import {clone,pct,dayKey,shiftDay,weekday,activeActivities,checkPct,normalizeCheck,roadPct,nextTasks,latestValues,canRemoveActivity,scheduleActivity,removeActivity,roadmapStatus,smoothPath} from './core.js?v=20261019-6';
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>crypto.randomUUID();
 const defaults={check:{activities:[{id:'painting',name:'Painting',target:120,progress:0},{id:'workout',name:'Workout',target:60,progress:0},{id:'reading',name:'Reading',target:45,progress:0}],pending:[],history:{},lastDate:dayKey(),todos:[]},road:clone(ROADMAP),body:{measurements:[],performance:[],workouts:[],todayWorkout:null,todayWorkoutDate:null}};
