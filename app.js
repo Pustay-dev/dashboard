@@ -2,7 +2,7 @@ import {ROADMAP} from './roadmap-data.js';
 import {PLAN,WEEK} from './workout-data.js';
 import {AFFIRMATIONS} from './affirmations.js';
 import {Records} from './storage.js';
-import {clone,pct,dayKey,shiftDay,weekday,activeActivities,checkPct,normalizeCheck,roadPct,nextTasks,latestValues,canRemoveActivity,scheduleActivity,removeActivity,roadmapStatus,smoothPath,dailyAffirmation} from './core.js';
+import {clone,pct,dayKey,shiftDay,weekday,activeActivities,checkPct,normalizeCheck,roadPct,nextTasks,latestValues,canRemoveActivity,scheduleActivity,removeActivity,roadmapStatus,smoothPath,dailyAffirmation} from './core.js?v=20261019-2';
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>crypto.randomUUID();
 const defaults={check:{activities:[{id:'painting',name:'Painting',target:120,progress:0},{id:'workout',name:'Workout',target:60,progress:0},{id:'reading',name:'Reading',target:45,progress:0}],pending:[],history:{},lastDate:dayKey(),todos:[]},road:clone(ROADMAP),body:{measurements:[],performance:[],workouts:[],todayWorkout:null,todayWorkoutDate:null}};
