@@ -18,7 +18,7 @@ The existing three JSONBin IDs remain configured. The old public source embedded
 
 Without a key the app works on-device. On a fresh browser, connect before editing to load cloud records. If a local copy and cloud copy differ, the app keeps the local changes and reports a conflict. Export a backup before choosing “Use cloud copy”. Backups contain data, never credentials. Local edits survive offline reloads and can be retried. JSONBin supports full-record writes rather than transactions; simultaneous writes from multiple devices should be avoided. The app checks for changes before writing and serializes its own requests.
 
-A custom domain has a different browser origin. Connect cloud there or export/import a backup. Browser-local records do not automatically move to another domain. Legacy check-in rules remain: incomplete activities carry forward, completed activities archive next day, and history freezes a daily total. Previous activity-level history is unavailable because the old app did not store it.
+A custom domain has a different browser origin. Connect cloud there or export/import a backup. Browser-local records do not automatically move to another domain. Check-in tasks can be scheduled for a specific date. Scheduled tasks lock when their date starts; unfinished tasks lock when carried forward. Completed tasks archive the next day. Quick tasks become regular activities (15-minute default, editable at entry). The performance graph includes live current-day progress and frozen previous days. Previous activity-level history is unavailable because the old app did not store it.
 
 ## Custom domain
 
@@ -33,3 +33,7 @@ No CNAME is precommitted: doing that before DNS is connected would redirect the 
 ## Validation
 
 Run `npm test` (Node 22+). Tests exercise all routes with a DOM event harness, check-in migration and controls, roadmap changes, measurements, workout logging, date boundaries, existing-record compatibility, offline recovery, invalid responses and cloud conflicts. These tests do not replace real-browser visual inspection on iPhone/iPad. Source syntax is checked as well. GitHub Actions runs the same checks on pushes and pull requests.
+
+## Phone layout and daily affirmation
+
+Workouts use stacked exercise cards with paired load/result inputs; measurements use a two-column entry form and stacked history records. There are no horizontal logging tables. An affirmation excerpt from Jakub’s own `2025 - Manifest 1.2.pdf` is selected randomly once per Prague date and stored on-device, avoiding a repeat of the previous day. It appears beside Today. Roadmap status counts unfinished tasks with due dates before today; it includes days since the earliest missed due date.
