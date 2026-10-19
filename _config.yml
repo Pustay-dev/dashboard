@@ -1,0 +1,4 @@
+exclude:
+  - tests
+  - package.json
+  - README.md
