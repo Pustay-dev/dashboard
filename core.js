@@ -1,6 +1,6 @@
 export const clone=o=>JSON.parse(JSON.stringify(o));
 export const pct=n=>Math.max(0,Math.min(100,Number(n)||0));
-export function dayKey(date=new Date()){return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Prague',year:'numeric',month:'2-digit',day:'2-digit'}).format(date)}
+export function dayKey(date=new Date()){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Prague',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`}
 export function shiftDay(d,n){const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)}
 export function weekday(d){return new Date(d+'T12:00:00Z').getUTCDay()}
 export function activeActivities(s){return s.activities.filter(a=>!a.archived)}
@@ -44,11 +44,11 @@ export function validRecord(kind,r){
 }
 
 export function canRemoveActivity(a,today=dayKey()){
- return !!a&&!a.locked&&(!a.createdOn||a.createdOn>=today)&&(!a.scheduledFor||a.scheduledFor>today);
+ return !!a&&!a.locked&&(!a.createdOn||a.createdOn>=today)&&(!a.scheduledFor||a.scheduledFor>=today);
 }
 export function scheduleActivity(s,activity,date,today=dayKey()){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<today)throw Error('Choose today or a future date');
- const a={...activity,progress:0,archived:false,locked:false,createdOn:today};
+ const a={...activity,progress:0,archived:false,locked:false,createdOn:today,scheduledFor:date};
  if(date===today)s.activities.push(a);else s.pending.push({...a,scheduledFor:date});
 }
 export function removeActivity(s,id,today=dayKey()){

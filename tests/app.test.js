@@ -51,6 +51,26 @@ test('full Check-in plays the completion before redraw and preserves the complet
  go('today');assert(!html().includes('data-activity-row="reading"'));
 });
 
+test('quick task on a future viewing date stays pending and is absent from Today',async()=>{
+ const {dayKey,shiftDay}=await import('../core.js');const today=dayKey(),future=shiftDay(today,3);go('check-in');await click({goDate:future});
+ const Original=globalThis.FormData;globalThis.FormData=class{get(k){return {text:'Future quick task regression',target:'15'}[k]}};
+ try{await listeners['#app:submit']({preventDefault(){},target:{id:'todo-form'}})}finally{globalThis.FormData=Original}
+ const s=record('check'),queued=s.pending.find(a=>a.name==='Future quick task regression');assert(queued);assert.equal(queued.scheduledFor,future);assert(!s.activities.some(a=>a.name==='Future quick task regression'));
+ await click({},['data-today']);go('today');assert(!html().includes('Future quick task regression'));
+ go('check-in');await click({goDate:future});assert(html().includes('Future quick task regression'));
+});
+test('explicit future date schedules correctly even when the page is viewing Today',async()=>{
+ const {dayKey,shiftDay}=await import('../core.js');const future=shiftDay(dayKey(),5);go('check-in');await click({},['data-today']);
+ const Original=globalThis.FormData;globalThis.FormData=class{get(k){return {name:'Explicit future task regression',target:'30',date:future}[k]}};
+ try{await listeners['#app:submit']({preventDefault(){},target:{id:'activity-form'}})}finally{globalThis.FormData=Original}
+ const s=record('check');assert.equal(s.pending.find(a=>a.name==='Explicit future task regression').scheduledFor,future);assert(!s.activities.some(a=>a.name==='Explicit future task regression'));
+});
+test('task name, duration and future date survive a background redraw',async()=>{
+ const {dayKey,shiftDay}=await import('../core.js');const future=shiftDay(dayKey(),7);go('check-in');
+ for(const [name,value] of Object.entries({name:'Keep my draft',target:'25',date:future}))listeners['#app:input']({target:{form:{id:'activity-form'},name,value}});
+ listeners['window:hashchange']();assert(html().includes('name="name" value="Keep my draft"'));assert(html().includes('name="target" type="number" value="25"'));assert(html().includes('value="'+future+'"'));
+});
+
 test('Settings displays the real connection failure instead of only saying offline',async()=>{
  const originalFetch=fetchImplementation,OriginalFormData=globalThis.FormData;fetchImplementation=async()=>{throw new TypeError('Load failed')};
  globalThis.FormData=class{get(){return 'test-only'}};go('settings');
