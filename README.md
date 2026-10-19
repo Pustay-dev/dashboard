@@ -34,6 +34,6 @@ No CNAME is precommitted: doing that before DNS is connected would redirect the 
 
 Run `npm test` (Node 22+). Tests exercise all routes with a DOM event harness, check-in migration and controls, roadmap changes, measurements, workout logging, date boundaries, existing-record compatibility, offline recovery, invalid responses and cloud conflicts. These tests do not replace real-browser visual inspection on iPhone/iPad. Source syntax is checked as well. GitHub Actions runs the same checks on pushes and pull requests.
 
-## Phone layout and daily affirmation
+## Phone layout
 
-Workouts use stacked exercise cards with paired load/result inputs; measurements use a two-column entry form and stacked history records. There are no horizontal logging tables. An affirmation excerpt from Jakub’s own `2025 - Manifest 1.2.pdf` is selected randomly once per Prague date and stored on-device, avoiding a repeat of the previous day. It appears beside Today. Roadmap status counts unfinished tasks with due dates before today; it includes days since the earliest missed due date.
+Workouts use stacked exercise cards with paired load/result inputs; measurements use a two-column entry form and stacked history records. There are no horizontal logging tables. Roadmap status counts unfinished tasks with due dates before today; it includes days since the earliest missed due date.
