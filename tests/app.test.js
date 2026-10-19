@@ -35,3 +35,17 @@ test('completion caps time, hides Today task, and retains it in full Check-in fo
  go('today');assert(html().includes('data-activity-row="'+activity.id+'"'));
  await click({completeActivity:activity.id});assert.equal(record('check').activities.find(a=>a.id===activity.id).progress,10);assert(!html().includes('data-activity-row="'+activity.id+'"'));
 });
+
+test('full Check-in plays the completion before redraw and preserves the completed task',async()=>{
+ go('check-in');const before=html();let release;
+ const firstFinished=new Promise(resolve=>release=resolve);let animations=0;const classes=[];
+ const row={querySelectorAll:()=>[],querySelector:()=>({style:{}}),classList:{add:x=>classes.push(x)},getBoundingClientRect:()=>({height:130}),animate:()=>({finished:++animations===1?firstFinished:Promise.resolve()})};
+ const button={dataset:{completeActivity:'reading'},hasAttribute:()=>false,closest:selector=>selector==='.activity'?row:null};
+ const pending=listeners['#app:click']({target:{closest:()=>button}});
+ assert.equal(record('check').activities.find(a=>a.id==='reading').progress,45);
+ assert(classes.includes('activity-finishing'));assert.equal(html(),before,'completion must not redraw before animation finishes');
+ // Even a cloud/route redraw cannot cancel the visible row mid-animation.
+ listeners['window:hashchange']();assert.equal(html(),before);
+ release();await pending;assert.equal(animations,2);assert(html().includes('data-activity-row="reading"'));assert.notEqual(html(),before);
+ go('today');assert(!html().includes('data-activity-row="reading"'));
+});
