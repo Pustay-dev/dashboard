@@ -22,12 +22,12 @@ test('workout form saves weights and results once and shows weights on home',asy
 
 test('workout and measurements use stacked forms with no wide tables',async()=>{go('workout');await click({plan:'monday'});assert(html().includes('class="log-exercise"'));assert(html().includes('class="log-inputs"'));assert(!html().includes('<table'));go('measurements');assert(html().includes('measurement-history'));assert(!html().includes('<table'))});
 test('daily check-in sections follow requested order and use a smooth performance graph',()=>{go('check-in');const h=html();assert(h.indexOf('Daily check-in')<h.indexOf('Quick task'));assert(h.indexOf('Quick task')<h.indexOf('Add a task'));assert(h.indexOf('Add a task')<h.indexOf('Performance'));assert(h.includes('performance-chart'));assert(h.includes('type="date" min='))});
-test('quick task is added to the main activity list',async()=>{go('check-in');const Original=globalThis.FormData;globalThis.FormData=class{get(k){return {text:'Call printer',target:'10'}[k]}};try{await listeners['#app:submit']({preventDefault(){},target:{id:'todo-form'}})}finally{globalThis.FormData=Original}assert(record('check').activities.some(a=>a.name==='Call printer'&&a.target===10));go('today');assert(html().includes('Call printer'))});
+test('quick task is added to the main activity list',async()=>{go('check-in');await click({},['data-today']);const Original=globalThis.FormData;globalThis.FormData=class{get(k){return {text:'Call printer',target:'10'}[k]}};try{await listeners['#app:submit']({preventDefault(){},target:{id:'todo-form'}})}finally{globalThis.FormData=Original}assert(record('check').activities.some(a=>a.name==='Call printer'&&a.target===10));go('today');assert(html().includes('Call printer'))});
 
-test('Today header has no affirmation and keeps a separate date control',()=>{go('today');assert(!html().includes('<blockquote'));assert(!html().includes('class="affirmation"'));assert(html().includes('class="date-picker"'));assert(html().includes('<h1>Today</h1>'))});
+test('Today header has no affirmation and keeps a separate date control',async()=>{go('today');await click({},['data-today']);assert(!html().includes('<blockquote'));assert(!html().includes('class="affirmation"'));assert(html().includes('class="date-picker"'));assert(html().includes('<h1>Today</h1>'))});
 
 test('completion caps time, hides Today task, and retains it in full Check-in for undo',async()=>{
- go('today');const activity=record('check').activities.find(a=>a.name==='Call printer');assert(activity);
+ go('today');await click({},['data-today']);const activity=record('check').activities.find(a=>a.name==='Call printer');assert(activity);
  await click({activity:activity.id,delta:'30'});assert.equal(record('check').activities.find(a=>a.id===activity.id).progress,10);
  assert(!html().includes('data-activity-row="'+activity.id+'"'));
  go('check-in');assert(html().includes('data-activity-row="'+activity.id+'"'));assert(html().includes('activity-is-done'));
@@ -38,7 +38,7 @@ test('completion caps time, hides Today task, and retains it in full Check-in fo
 });
 
 test('full Check-in plays the completion before redraw and preserves the completed task',async()=>{
- go('check-in');const before=html();let release;
+ go('check-in');await click({},['data-today']);const before=html();let release;
  const firstFinished=new Promise(resolve=>release=resolve);let animations=0;const classes=[];
  const row={querySelectorAll:()=>[],querySelector:()=>({style:{}}),classList:{add:x=>classes.push(x)},getBoundingClientRect:()=>({height:130}),animate:()=>({finished:++animations===1?firstFinished:Promise.resolve()})};
  const button={dataset:{completeActivity:'reading'},hasAttribute:()=>false,closest:selector=>selector==='.activity'?row:null};
@@ -69,6 +69,25 @@ test('task name, duration and future date survive a background redraw',async()=>
  const {dayKey,shiftDay}=await import('../core.js');const future=shiftDay(dayKey(),7);go('check-in');
  for(const [name,value] of Object.entries({name:'Keep my draft',target:'25',date:future}))listeners['#app:input']({target:{form:{id:'activity-form'},name,value}});
  listeners['window:hashchange']();assert(html().includes('name="name" value="Keep my draft"'));assert(html().includes('name="target" type="number" value="25"'));assert(html().includes('value="'+future+'"'));
+});
+
+test('difficulty is optional, persists per date and workout, and never logs completion',async()=>{
+ const {dayKey}=await import('../core.js');go('workout');await click({},['data-today']);await click({plan:'monday'});
+ assert(html().includes('Not rated'));const before=record('body').workouts.length;
+ const target={id:'workout-difficulty',value:'3',dataset:{feedbackDate:dayKey(),feedbackType:'monday'},setAttribute(){}};
+ // Touching the neutral slider value must count as a deliberate rating too.
+ listeners['#app:pointerup']({target});
+ assert.equal(record('body').workoutFeedback[dayKey()+':monday'].difficulty,3);
+ assert.equal(record('body').workouts.length,before);
+ target.value='5';await listeners['#app:change']({target});assert.equal(record('body').workoutFeedback[dayKey()+':monday'].difficulty,5);
+ go('workout');await click({plan:'monday'});assert(html().includes('5 / 5'));
+ await click({},['data-clear-difficulty']);assert(!record('body').workoutFeedback[dayKey()+':monday']);
+});
+test('weekly note persists independently and escapes markup',async()=>{
+ go('workout');const date='2026-10-21',target={id:'weekly-feedback',dataset:{week:'2026-10-19'},value:'Less volume <script>alert(1)</script>'};
+ listeners['#app:input']({target});await listeners['#app:change']({target});assert.equal(record('body').weeklyFeedback['2026-10-19'].note,target.value);
+ await click({goDate:date});assert(html().includes('&lt;script&gt;'));assert(!html().includes('<script>alert'));
+ const snapshot=record('body').workouts.find(x=>x.plan);assert(snapshot?.plan.rows.length);
 });
 
 test('Settings displays the real connection failure instead of only saying offline',async()=>{
