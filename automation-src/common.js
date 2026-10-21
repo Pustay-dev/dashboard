@@ -24,6 +24,6 @@ function starter(start){
 function availablePlan(state,start){
  if(state.weeks?.[start])return {...state.weeks[start],source:'AI weekly plan'};
  const previous=Object.keys(state.weeks||{}).filter(k=>k<start).sort().at(-1);
- if(previous){const p=JSON.parse(JSON.stringify(state.weeks[previous]));p.weekStart=start;p.days.forEach((d,i)=>d.date=shift(start,i));p.summary='Using the last valid weekly plan. '+p.summary;return {...p,source:'Previous valid AI plan'}}
+ if(previous){const p=JSON.parse(JSON.stringify(state.weeks[previous]));p.weekStart=start;p.days.forEach((d,i)=>d.date=shift(start,i));p.summary=('Using the last valid weekly plan. '+p.summary).slice(0,600);return {...p,source:'Previous valid AI plan'}}
  return {...starter(start),source:'Fixed starter plan'};
 }

@@ -83,6 +83,13 @@ test('difficulty is optional, persists per date and workout, and never logs comp
  go('workout');await click({plan:'monday'});assert(html().includes('5 / 5'));
  await click({},['data-clear-difficulty']);assert(!record('body').workoutFeedback[dayKey()+':monday']);
 });
+test('editing feedback preserves unsaved workout reps and loads',async()=>{
+ const {dayKey}=await import('../core.js');go('workout');await click({},['data-today']);await click({plan:'monday'});
+ for(const [name,value] of Object.entries({'load-3':'75','reps-3':'5 / 5 / 4'}))listeners['#app:input']({target:{form:{id:'workout-form'},name,value}});
+ const target={id:'workout-difficulty',value:'4',dataset:{feedbackDate:dayKey(),feedbackType:'monday'},setAttribute(){}};
+ await listeners['#app:change']({target});await click({},['data-clear-difficulty']);
+ assert(html().includes('value="75"'));assert(html().includes('value="5 / 5 / 4"'));
+});
 test('weekly note persists independently and escapes markup',async()=>{
  go('workout');const date='2026-10-21',target={id:'weekly-feedback',dataset:{week:'2026-10-19'},value:'Less volume <script>alert(1)</script>'};
  listeners['#app:input']({target});await listeners['#app:change']({target});assert.equal(record('body').weeklyFeedback['2026-10-19'].note,target.value);
