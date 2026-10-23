@@ -4,7 +4,7 @@ Independent static admin at https://jakub.pustay.cz/nechsenakreslit/. Existing p
 
 ## Enable your administrator
 
-An existing, verified Supabase Auth email/password user is required. Insert only the intended administrator's lowercased email into `public.nsl_admin_members` using the Supabase SQL editor or an authorized backend tool. The allowlist starts empty. Never grant access to anonymous customer accounts. Sign in at the dashboard with that account. Authentication is held in this tab's session storage; sign-out clears the session, data and image caches. Revoking the allowlist entry takes effect at the next request.
+An existing, verified Supabase Auth email/password user is required. Insert only the intended administrator's lowercased email into `public.nsl_admin_members` using the Supabase SQL editor or an authorized backend tool. Only explicitly approved emails belong in the allowlist. Never grant access to anonymous customer accounts. Sign in at the dashboard with that account. Authentication is held in this tab's session storage; sign-out clears the session, data and image caches. Revoking the allowlist entry takes effect at the next request.
 
 ## Connect cart observations (one live-theme edit)
 
@@ -14,7 +14,7 @@ Shopify's connector cannot write to the live MAIN theme. The observer is ready a
 <script src="https://jakub.pustay.cz/nechsenakreslit/cart-observer.js" defer></script>
 ```
 
-The observer reads the existing customer's session and a same-origin cart response. It records only portrait image IDs, product titles, variant IDs, quantities and observed prices for that customer's own gallery. It never sends cart tokens, email or shipping details, replaces fetch, mutates the cart, or blocks checkout. New cart mutations and browser returns trigger a refresh; a visible-page check runs every 30 seconds. Expired visitor credentials are skipped until the existing creator refreshes them. Historical carts cannot be recovered. Cart counts mean last observed items, not authoritative Shopify live cart state. Cart observations never count as revenue.
+The observer reads the existing customer's session and a same-origin cart response. It records only portrait image IDs, product titles, variant IDs, quantities and observed prices for that customer's own gallery. It never sends cart tokens, email or shipping details, replaces fetch, mutates the cart, or blocks checkout. New cart mutations and browser returns trigger a refresh; a visible-page check runs every 10 seconds. Expired visitor credentials are refreshed using the existing customer login; the observer never creates a new identity. Historical carts cannot be recovered. Cart counts mean last observed items, not authoritative Shopify live cart state. Cart observations never count as revenue.
 
 ## Metrics and daily accounts
 
@@ -28,10 +28,20 @@ Support messages are a manual log; no mailbox is connected. Open messages appear
 
 ## Deployment and validation
 
-`supabase/dashboard.sql` documents the additive schema and service-only RPCs. `supabase/index.ts` is deployed as `admin-dashboard` with JWT gateway verification on, plus explicit user verification and per-request admin authorization. Both public and authenticated customer roles have no admin table or RPC privileges. Existing customer RLS rules remain unchanged. No administrator has been provisioned in this change.
+`supabase/dashboard.sql` documents the additive schema and service-only RPCs. `supabase/index.ts` is deployed as `admin-dashboard` with JWT gateway verification on, plus explicit user verification and per-request admin authorization. Both public and authenticated customer roles have no admin table or RPC privileges. Existing customer RLS rules remain unchanged. Admin accounts are enabled individually through the server-side email allowlist.
 
 UI summary refresh: every 15 seconds while visible. Authenticated data stays in memory; signed preview links are reused for up to 14 minutes with four concurrent lazy loads. Gallery pages contain 30 items; only the three latest preview files are used on each card. Original storage files are signed only when a popup opens. The UI uses existing preview derivatives rather than loading originals on cards. Summary counts are aggregated in SQL; at larger volume add server-side cursor pagination for session summaries.
 
 Run `node --test nechsenakreslit/model.test.js` and `node --experimental-strip-types nechsenakreslit/tests/edge.test.mjs`. Manual/browser checks should cover login denial, gallery/original popups, editable labels, filters/sorts, finance missing days, support resolution, cart observation, safe retry predicates, mobile horizontal scrolling and signout. Before real customer use, complete an authenticated smoke check with the approved administrator.
 
 Validation completed: 58 existing personal dashboard tests, 4 admin model tests, 8 backend authorization/validation checks, and a DOM harness covering rendering, gallery/original/cart panels, labels, search, settings and signout passed. A real Chromium run could not start because the browser download failed in this runtime. Visual inspection and an authenticated production smoke check remain pending.
+
+## Session deletion and handled errors
+
+The card’s three-dot menu opens `Delete session & data`. The server previews exact counts before requiring the user to type DELETE. The operation revokes session access, removes files through Storage API (never by deleting storage metadata), removes unshared anonymous logins through Auth API, then removes this session’s images, jobs, uploads, cart, contact details and orphaned customer row. A partially failed deletion stays archived and can be retried. Another session belonging to the same person is outside this action’s scope. Sessions with orders, active/unresolved provider jobs, or recent uploads are blocked.
+
+Anonymous aggregate image/day and paid submission totals remain, with no user or gallery identifier. Both existing paid-generation admission checks include the retained submission count, so deletion cannot reset the spend guard. The new schema/functions are in `admin-actions.sql`; updated budget guards are in `retain-deleted-usage.sql`.
+
+Handled errors are recorded separately from generation job status. Marking an error handled clears the alert and card counter without pretending the job succeeded. A later update to the same job can surface a new error. The initial six handled errors were acknowledged at the user’s request. A future bulk action is available in the errors panel.
+
+Additional validation: expired customer credential refresh and cart synchronization tests passed. Deletion preview, revocation and relational cleanup were checked with a synthetic session inside a fully rolled-back database transaction. No real customer was deleted.

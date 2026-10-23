@@ -4,7 +4,7 @@ const origins=new Set(['https://jakub.pustay.cz','https://pustay-dev.github.io',
 const uuid=(x:unknown):x is string=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
 async function rest(path:string,method='GET',body?:unknown){
  const r=await fetch(BASE+'/rest/v1/'+path,{method,headers:{apikey:SECRET,'Content-Type':'application/json',Prefer:'return=representation'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000)});
- if(!r.ok)throw Error('DATABASE_REQUEST_FAILED');return r.status===204?null:r.json();
+ if(!r.ok){const d=await r.json().catch(()=>({}));const known=['SESSION_NOT_FOUND','SESSION_HAS_ORDERS','SESSION_HAS_ACTIVE_JOBS','SESSION_HAS_ACTIVE_UPLOAD','STORAGE_FILES_REMAIN','DELETION_NOT_STARTED'];throw Error(known.find(x=>String(d.message||'').includes(x))||'DATABASE_REQUEST_FAILED');}return r.status===204?null:r.json();
 }
 Deno.serve(async(req:Request)=>{
  const origin=req.headers.get('origin')||'',h={'Access-Control-Allow-Origin':origins.has(origin)?origin:'https://jakub.pustay.cz','Access-Control-Allow-Headers':'authorization,apikey,content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin','Cache-Control':'no-store','Content-Type':'application/json','X-Content-Type-Options':'nosniff'};
@@ -35,6 +35,30 @@ Deno.serve(async(req:Request)=>{
   if(user.is_anonymous||!user.email||!user.email_confirmed_at)return reply(403,{error:'ADMIN_ACCESS_REQUIRED'});
   const members=await rest('nsl_admin_members?select=email&email=eq.'+encodeURIComponent(user.email.toLowerCase()));
   if(!members.length)return reply(403,{error:'ADMIN_ACCESS_REQUIRED'});
+  if(b.action==='clear_errors')return reply(200,{handled:await rest('rpc/nsl_admin_clear_errors','POST',{})});
+  if(b.action==='delete_preview'){
+   if(!uuid(b.session_id))return reply(400,{error:'INVALID_SESSION'});
+   return reply(200,await rest('rpc/nsl_admin_delete_session','POST',{p_session_id:b.session_id,p_phase:'preview',p_actor:user.email}));
+  }
+  if(b.action==='delete_session'){
+   if(!uuid(b.session_id)||b.confirmation!==b.session_id)return reply(400,{error:'DELETE_CONFIRMATION_REQUIRED'});
+   const plan=await rest('rpc/nsl_admin_delete_session','POST',{p_session_id:b.session_id,p_phase:'begin',p_actor:user.email});
+   const buckets=new Map<string,string[]>();
+   for(const f of plan.files){if(!buckets.has(f.bucket))buckets.set(f.bucket,[]);buckets.get(f.bucket)!.push(f.path);}
+   for(const [bucket,paths] of buckets){
+    for(let i=0;i<paths.length;i+=100){
+     const r=await fetch(BASE+'/storage/v1/object/'+encodeURIComponent(bucket),{method:'DELETE',headers:{apikey:SECRET,'Content-Type':'application/json'},body:JSON.stringify({prefixes:paths.slice(i,i+100)}),signal:AbortSignal.timeout(15000)});
+     if(!r.ok)return reply(502,{error:'FILE_DELETE_FAILED_RETRY'});
+    }
+   }
+   for(const id of plan.auth_ids){
+    if(!uuid(id)||id===user.id)continue;
+    if((await rest('session_access?select=session_id&auth_user_id=eq.'+id+'&limit=1')).length)continue;
+    const r=await fetch(BASE+'/auth/v1/admin/users/'+id,{method:'DELETE',headers:{apikey:SECRET,'Content-Type':'application/json'},signal:AbortSignal.timeout(10000)});
+    if(!r.ok&&r.status!==404)return reply(502,{error:'LOGIN_DELETE_FAILED_RETRY'});
+   }
+   return reply(200,await rest('rpc/nsl_admin_delete_session','POST',{p_session_id:b.session_id,p_phase:'finish',p_actor:user.email}));
+  }
   if(b.action==='snapshot')return reply(200,await rest('rpc/nsl_admin_snapshot','POST',{}));
   if(b.action==='label'){
    if(!uuid(b.session_id)||typeof b.label!=='string'||b.label.trim().length>80)return reply(400,{error:'INVALID_LABEL'});
@@ -71,5 +95,5 @@ Deno.serve(async(req:Request)=>{
   }
   if(b.action==='complaint_resolve'&&uuid(b.id)){await rest('nsl_admin_complaints?id=eq.'+b.id,'PATCH',{resolved:true});return reply(200,{ok:true});}
   return reply(400,{error:'UNKNOWN_ACTION'});
- }catch(e){console.error('admin-dashboard',e instanceof Error?e.message:'request failed');return reply(500,{error:'REQUEST_FAILED'});}
+ }catch(e){const code=e instanceof Error?e.message:'REQUEST_FAILED';console.error('admin-dashboard',code);if(['SESSION_NOT_FOUND','SESSION_HAS_ORDERS','SESSION_HAS_ACTIVE_JOBS','SESSION_HAS_ACTIVE_UPLOAD','STORAGE_FILES_REMAIN'].includes(code))return reply(409,{error:code});return reply(500,{error:'REQUEST_FAILED'});}
 });
