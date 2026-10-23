@@ -97,6 +97,23 @@ test('weekly note persists independently and escapes markup',async()=>{
  const snapshot=record('body').workouts.find(x=>x.plan);assert(snapshot?.plan.rows.length);
 });
 
+test('skipped sessions are saved separately, visible in history and undoable',async()=>{
+ go('workout');await click({goDate:'2026-10-21'});const before=record('body').workouts.length;
+ assert(html().includes('data-skip-workout'));await click({},['data-skip-workout']);await click({},['data-skip-workout']);
+ const b=record('body');assert.equal(b.workouts.length,before);assert.equal(b.skippedWorkouts.filter(x=>x.date==='2026-10-21'&&x.type==='wednesday').length,1);assert(b.skippedWorkouts[0].plan.rows.length);
+ assert(html().includes('1 skipped'));assert(html().includes('data-undo-skip'));assert(!html().includes('id="workout-difficulty"'));
+ go('today');assert(html().includes('<small>Skipped</small>'));go('workout');await click({},['data-undo-skip']);assert.equal(record('body').skippedWorkouts.length,0);assert.equal(record('body').workouts.length,before);
+});
+test('saving a workout replaces a skip without duplicate or contradictory records',async()=>{
+ go('workout');await click({goDate:'2026-10-21'});await click({},['data-skip-workout']);const Original=globalThis.FormData;globalThis.FormData=class{get(){return ''}};
+ try{await listeners['#app:submit']({preventDefault(){},target:{id:'workout-form'},submitter:{value:'log'}})}finally{globalThis.FormData=Original}
+ const b=record('body');assert(!b.skippedWorkouts.some(x=>x.date==='2026-10-21'&&x.type==='wednesday'));assert.equal(b.workouts.filter(x=>x.date==='2026-10-21'&&x.type==='wednesday').length,1);await click({},['data-skip-workout']);assert(!record('body').skippedWorkouts.length);
+});
+test('future sessions and rest days cannot be marked skipped',async()=>{
+ const {dayKey,shiftDay}=await import('../core.js');go('workout');await click({goDate:shiftDay(dayKey(),7)});await click({plan:'monday'});const before=JSON.stringify(record('body').skippedWorkouts||[]);assert(!html().includes('data-skip-workout'));await click({},['data-skip-workout']);assert.equal(JSON.stringify(record('body').skippedWorkouts||[]),before);
+ await click({goDate:'2026-10-18'});assert(!html().includes('data-skip-workout'));await click({},['data-skip-workout']);assert.equal(JSON.stringify(record('body').skippedWorkouts||[]),before);
+});
+
 test('Settings displays the real connection failure instead of only saying offline',async()=>{
  const originalFetch=fetchImplementation,OriginalFormData=globalThis.FormData;fetchImplementation=async()=>{throw new TypeError('Load failed')};
  globalThis.FormData=class{get(){return 'test-only'}};go('settings');

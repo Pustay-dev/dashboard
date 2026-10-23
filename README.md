@@ -39,3 +39,7 @@ Run `npm test` (Node 22+). Tests exercise all routes with a DOM event harness, c
 Workouts use stacked exercise cards with paired load/result inputs; measurements use a two-column entry form and stacked history records. There are no horizontal logging tables. Roadmap status counts unfinished tasks with due dates before today; it includes days since the earliest missed due date.
 
 Completed activities are crossed out and flicked right from Today, with a brief collapse of the gap. They remain in full Check-in until the usual next-day archival. Progress is capped at each activity target, including legacy overfilled values; extra time on one task cannot inflate another task’s progress. Reduced-motion preferences skip the movement.
+
+## Skipped workouts
+
+Use “Skip workout” beside Save workout for today or an earlier active session. Skips appear in Today, the weekly view and combined workout history, with a separate count. Undo skip removes the mark; saving a completed workout replaces its skip. Rest days and future sessions cannot be skipped. `body.skippedWorkouts` stores date/type and a prescription snapshot separately from completed `body.workouts`, so the existing completion count and AI performance log do not mistake a skip for exercise. Skips use the existing JSONBin sync and backup/import flow.
