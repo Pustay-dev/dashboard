@@ -4,3 +4,5 @@
 .session-menu{font-size:20px;padding:0 8px;border:0;background:none;line-height:1;flex-shrink:0}.card-name{max-width:220px}.danger{color:#a33c3c;border-color:#d8b3ac;background:#fff5f0}.danger:hover{background:#f8ded8}#delete-form{margin-top:22px}#delete-form input{margin-top:10px;width:100%}
 
 button:focus:not(:focus-visible),input:focus:not(:focus-visible),select:focus:not(:focus-visible),.cards:focus:not(:focus-visible){outline:none;box-shadow:none}.session-menu{display:flex;align-items:center;justify-content:center;min-width:34px;min-height:34px;color:#8b8384}.session-menu:hover{color:#a33c3c;background:#f4e8e3}.cart-row{justify-content:flex-start;align-items:center;gap:18px}.cart-row>.preview{width:62px;height:82px;flex:0 0 62px}.cart-row>div{flex:1}
+
+.alert-actions{display:flex;gap:8px;flex-shrink:0}.alert>span{flex:1}@media(max-width:600px){.alert{flex-wrap:wrap}.alert-actions{margin-left:auto}}

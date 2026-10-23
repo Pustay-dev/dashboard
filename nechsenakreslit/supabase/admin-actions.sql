@@ -47,7 +47,11 @@ begin
   insert into public.nsl_admin_deletions(session_id,confirmed_by,auth_ids) values(s.id,p_actor,auths) on conflict(session_id) do nothing;
   update public.sessions set selected_image_id=null,expires_at=least(expires_at,now()-interval '1 second'),admin_archived_at=coalesce(admin_archived_at,now()),updated_at=now() where id=s.id;
   delete from public.session_access where session_id=s.id;
-  select auth_ids into auths from public.nsl_admin_deletions where session_id=s.id;
+  -- Contacts must be removed before the worker deletes the anonymous Auth login.
+  delete from private.gallery_contacts where session_id=s.id;
+  select coalesce(jsonb_agg(a.value),'[]') into auths
+   from public.nsl_admin_deletions d cross join lateral jsonb_array_elements(d.auth_ids) a
+   where d.session_id=s.id and not exists(select 1 from private.gallery_contacts c where c.auth_user_id=(a.value #>> '{}')::uuid);
   return jsonb_build_object('files',manifest,'auth_ids',auths);
  elsif p_phase='finish' then
   if not exists(select 1 from public.nsl_admin_deletions where session_id=s.id) then raise exception 'DELETION_NOT_STARTED'; end if;
@@ -75,7 +79,7 @@ revoke all on function public.nsl_admin_delete_session(uuid,text,text) from publ
 grant execute on function public.nsl_admin_delete_session(uuid,text,text) to service_role;
 
 -- Durable background cleanup leases and retry reporting.
-alter table public.nsl_admin_deletions add column if not exists lease_until timestamptz, add column if not exists attempts integer not null default 0, add column if not exists last_error text;
+alter table public.nsl_admin_deletions add column if not exists lease_until timestamptz, add column if not exists attempts integer not null default 0, add column if not exists last_error text, add column if not exists dismissed_at timestamptz;
 
 
 -- Read-only readiness check; approved grants are recorded in backend-cleanup-permissions.sql.

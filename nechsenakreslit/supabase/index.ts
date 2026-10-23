@@ -106,15 +106,20 @@ Deno.serve(async(req:Request)=>{
    if(!uuid(b.session_id)||b.confirmation!==b.session_id)return reply(400,{error:'DELETE_CONFIRMATION_REQUIRED'});
    if(!await rest('rpc/nsl_admin_deletion_ready','POST',{}))return reply(503,{error:'DELETE_SETUP_REQUIRED'});
    const plan=await rest('rpc/nsl_admin_delete_session','POST',{p_session_id:b.session_id,p_phase:'begin',p_actor:user.email});
-   await rest('nsl_admin_deletions?session_id=eq.'+b.session_id,'PATCH',{attempts:0,last_error:null});
+   await rest('nsl_admin_deletions?session_id=eq.'+b.session_id,'PATCH',{attempts:0,last_error:null,dismissed_at:null});
    EdgeRuntime.waitUntil(cleanupSession(b.session_id,user.email,user.id));
    return reply(202,{accepted:true,session_id:b.session_id});
+  }
+  if(b.action==='deletion_dismiss'){
+   if(!uuid(b.session_id))return reply(400,{error:'INVALID_SESSION'});
+   await rest('nsl_admin_deletions?session_id=eq.'+b.session_id,'PATCH',{dismissed_at:new Date().toISOString()});
+   return reply(200,{ok:true});
   }
   if(b.action==='snapshot'){
    const data=await rest('rpc/nsl_admin_snapshot','POST',{});
    data.deletion_ready=await rest('rpc/nsl_admin_deletion_ready','POST',{});
-   const jobs=await rest('nsl_admin_deletions?select=session_id,confirmed_by,attempts,last_error');
-   data.deleting_sessions=jobs.map((j:any)=>j.session_id);data.deletion_issues=jobs.filter((j:any)=>j.last_error).map((j:any)=>({session_id:j.session_id}));
+   const jobs=await rest('nsl_admin_deletions?select=session_id,confirmed_by,attempts,last_error,dismissed_at,sessions(internal_number,admin_label)');
+   data.deleting_sessions=jobs.map((j:any)=>j.session_id);data.deletion_issues=jobs.filter((j:any)=>j.last_error&&!j.dismissed_at).map((j:any)=>({session_id:j.session_id,error:j.last_error,label:j.sessions?.admin_label||'USER-'+String(j.sessions?.internal_number||'').padStart(4,'0')}));
    for(const job of jobs)if(job.attempts<3)EdgeRuntime.waitUntil(cleanupSession(job.session_id,job.confirmed_by,user.id));
    return reply(200,data);
   }

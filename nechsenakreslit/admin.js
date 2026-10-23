@@ -28,11 +28,17 @@ function render(){
  const a=$('#alerts');a.replaceChildren();
  if(snapshot.errors.length)addAlert(snapshot.errors.length+' generation jobs need attention.','View errors',showErrors);
  if(snapshot.safe_retries)addAlert(snapshot.safe_retries+' failed jobs can be safely requeued.','Retry safe jobs',()=>action(async()=>{if(!confirm('Retry '+snapshot.safe_retries+' failures with no provider submission? Jobs already submitted will be left for review.'))return;const d=await api('retry_safe');await refresh();message(d.retried+' jobs requeued.');}));
- for(const job of snapshot.deletion_issues||[])addAlert('A session could not finish deleting.','Retry deletion',()=>{deletingSessions.delete(job.session_id);removeSession(job.session_id);});
+ for(const job of snapshot.deletion_issues||[])addAlert((job.label||'Session')+' could not finish deleting. '+explain({message:job.error}),'Fix / retry',()=>deletionAlertAction(job,false),()=>deletionAlertAction(job,true));
  if(snapshot.complaints.length)addAlert(snapshot.complaints.length+' open support messages.','Review',showComplaints);
  renderCards();
 }
-function addAlert(text,label,click){const el=document.createElement('div');el.className='alert';const span=document.createElement('span');span.textContent=text;const b=document.createElement('button');b.textContent=label;b.onclick=click;el.append(span,b);$('#alerts').append(el);}
+function addAlert(text,label,click,dismiss){const el=document.createElement('div');el.className='alert';const span=document.createElement('span');span.textContent=text;const b=document.createElement('button');b.textContent=label;b.onclick=click;const actions=document.createElement('div');actions.className='alert-actions';actions.append(b);if(dismiss){const d=document.createElement('button');d.textContent='Dismiss';d.title='Hide this alert; keep the cleanup record';d.onclick=dismiss;actions.append(d);}el.append(span,actions);$('#alerts').append(el);}
+async function deletionAlertAction(job,dismiss){
+ const epoch=authEpoch;
+ snapshot.deletion_issues=snapshot.deletion_issues.filter(j=>j.session_id!==job.session_id);render();
+ try{await api(dismiss?'deletion_dismiss':'delete_session',dismiss?{session_id:job.session_id}:{session_id:job.session_id,confirmation:job.session_id});}
+ catch(e){if(epoch!==authEpoch)return;snapshot.deletion_issues.push(job);render();message(explain(e));}
+}
 function renderCards(){
  if(!snapshot)return;const rows=selectSessions(snapshot.sessions.filter(s=>!deletingSessions.has(s.id)&&!(snapshot.deleting_sessions||[]).includes(s.id)),{sort:$('#sort').value,filter:$('#filter').value,search:$('#search').value});$('#session-count').textContent=rows.length;$('#empty').hidden=!!rows.length;
  const container=$('#cards');const desired=new Set(rows.map(s=>s.id));for(const el of [...container.children])if(!desired.has(el.dataset.id))el.remove();
