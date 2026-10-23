@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+let handler,user,member=false;const calls=[];
+globalThis.Deno={env:{get:k=>k==='SUPABASE_URL'?'https://test.supabase.co':'server-only-key'},serve:fn=>handler=fn};
+globalThis.fetch=async(url,options)=>{calls.push(String(url));if(String(url).endsWith('/auth/v1/user'))return Response.json(user||{}, {status:user?200:401});if(String(url).includes('/nsl_admin_members?'))return Response.json(member?[{email:user.email}]:[]);if(String(url).endsWith('/rpc/nsl_admin_snapshot'))return Response.json({sessions:[],metrics:{generated:0}});if(String(url).includes('/session_access?'))return Response.json([]);throw Error('Unexpected request '+url)};
+await import('../supabase/index.ts');
+const req=(body,token=true,origin='https://jakub.pustay.cz')=>new Request('https://test/admin',{method:'POST',headers:{origin,'content-type':'application/json',...(token?{authorization:'Bearer user-token'}:{})},body:JSON.stringify(body)});
+assert.equal((await handler(req({action:'snapshot'},false))).status,401);
+user={id:'anonymous',is_anonymous:true};assert.equal((await handler(req({action:'snapshot'}))).status,403);
+user={id:'user',email:'visitor@example.com',email_confirmed_at:'2026-10-23'};assert.equal((await handler(req({action:'snapshot'}))).status,403);
+member=true;assert.equal((await handler(req({action:'snapshot'}))).status,200);
+assert.equal((await handler(req({action:'snapshot'},true,'https://attacker.example'))).status,403);
+assert.equal((await handler(req({action:'cart_sync',session_id:'00000000-0000-4000-8000-000000000001',items:[]}))).status,403);
+assert.equal((await handler(req({action:'label',session_id:'invalid',label:'a'}))).status,400);
+assert.equal((await handler(req({action:'finance',day:'2026-10-23',revenue:1,ads:-1,generation:1,printing:1,other:1}))).status,400);
+console.log('PASS: edge missing token, anonymous user, nonmember, member, forbidden origin, foreign cart, label validation, invalid costs');

@@ -1,0 +1,75 @@
+const BASE=Deno.env.get('SUPABASE_URL')!;
+const SECRET=Deno.env.get('APP_SECRET_KEY')||Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const origins=new Set(['https://jakub.pustay.cz','https://pustay-dev.github.io','https://nechsenakreslit.cz','https://www.nechsenakreslit.cz','http://localhost:4173']);
+const uuid=(x:unknown):x is string=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
+async function rest(path:string,method='GET',body?:unknown){
+ const r=await fetch(BASE+'/rest/v1/'+path,{method,headers:{apikey:SECRET,'Content-Type':'application/json',Prefer:'return=representation'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000)});
+ if(!r.ok)throw Error('DATABASE_REQUEST_FAILED');return r.status===204?null:r.json();
+}
+Deno.serve(async(req:Request)=>{
+ const origin=req.headers.get('origin')||'',h={'Access-Control-Allow-Origin':origins.has(origin)?origin:'https://jakub.pustay.cz','Access-Control-Allow-Headers':'authorization,apikey,content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin','Cache-Control':'no-store','Content-Type':'application/json','X-Content-Type-Options':'nosniff'};
+ const reply=(status:number,data:unknown)=>new Response(JSON.stringify(data),{status,headers:h});
+ if(origin&&!origins.has(origin))return reply(403,{error:'ORIGIN_NOT_ALLOWED'});
+ if(req.method==='OPTIONS')return new Response(null,{status:204,headers:h});
+ if(req.method!=='POST')return reply(405,{error:'METHOD_NOT_ALLOWED'});
+ try{
+  const auth=req.headers.get('authorization')||'';
+  if(!auth.startsWith('Bearer '))return reply(401,{error:'SIGN_IN_REQUIRED'});
+  const userRes=await fetch(BASE+'/auth/v1/user',{headers:{apikey:SECRET,Authorization:auth},signal:AbortSignal.timeout(10000)});
+  if(!userRes.ok)return reply(401,{error:'SIGN_IN_REQUIRED'});
+  const user=await userRes.json();
+  const raw=await req.text();if(raw.length>40000)return reply(413,{error:'REQUEST_TOO_LARGE'});
+  const b=JSON.parse(raw||'{}');
+  if(b.action==='cart_sync'){
+   if(!uuid(b.session_id)||!Array.isArray(b.items)||b.items.length>100)return reply(400,{error:'INVALID_CART'});
+   const access=await rest('session_access?select=session_id&session_id=eq.'+b.session_id+'&auth_user_id=eq.'+encodeURIComponent(user.id));
+   if(!access.length)return reply(403,{error:'SESSION_ACCESS_DENIED'});
+   const items=b.items.map((i:any)=>({image_id:i.image_id,variant_id:String(i.variant_id).slice(0,30),title:String(i.title||'Portrait').slice(0,160),quantity:Number(i.quantity),price:Number(i.price)}));
+   if(items.some((i:any)=>!uuid(i.image_id)||!Number.isInteger(i.quantity)||i.quantity<1||i.quantity>100||!Number.isFinite(i.price)||i.price<0))return reply(400,{error:'INVALID_CART'});
+   if(items.length){const ids=items.map((i:any)=>i.image_id).join(',');const owned=await rest('images?select=id&session_id=eq.'+b.session_id+'&id=in.('+ids+')');if(items.some((i:any)=>!owned.some((x:any)=>x.id===i.image_id)))return reply(403,{error:'IMAGE_ACCESS_DENIED'});}
+   // Cart values are observational, never a source of paid revenue.
+   const existing=await rest('nsl_admin_carts?select=session_id&session_id=eq.'+b.session_id);
+   await rest('nsl_admin_carts'+(existing.length?'?session_id=eq.'+b.session_id:''),existing.length?'PATCH':'POST',{session_id:b.session_id,items,updated_at:new Date().toISOString()});
+   return reply(200,{ok:true});
+  }
+  if(user.is_anonymous||!user.email||!user.email_confirmed_at)return reply(403,{error:'ADMIN_ACCESS_REQUIRED'});
+  const members=await rest('nsl_admin_members?select=email&email=eq.'+encodeURIComponent(user.email.toLowerCase()));
+  if(!members.length)return reply(403,{error:'ADMIN_ACCESS_REQUIRED'});
+  if(b.action==='snapshot')return reply(200,await rest('rpc/nsl_admin_snapshot','POST',{}));
+  if(b.action==='label'){
+   if(!uuid(b.session_id)||typeof b.label!=='string'||b.label.trim().length>80)return reply(400,{error:'INVALID_LABEL'});
+   await rest('sessions?id=eq.'+b.session_id,'PATCH',{admin_label:b.label.trim()||null});return reply(200,{ok:true});
+  }
+  if(b.action==='gallery'){
+   if(!uuid(b.session_id))return reply(400,{error:'INVALID_SESSION'});
+   const offset=Math.max(0,Math.min(100000,Number(b.offset)||0));
+   return reply(200,await rest('images?select=id,internal_reference,created_at&session_id=eq.'+b.session_id+'&order=created_at.desc&limit=30&offset='+offset));
+  }
+  if(b.action==='image'){
+   if(!uuid(b.image_id))return reply(400,{error:'INVALID_IMAGE'});
+   const rows=await rest('images?select=preview_path,original_path&id=eq.'+b.image_id);if(!rows.length)return reply(404,{error:'IMAGE_NOT_FOUND'});
+   const bucket=b.original===true?'originals':'previews',path=rows[0][b.original===true?'original_path':'preview_path'];
+   const encoded=path.split('/').map(encodeURIComponent).join('/');
+   const r=await fetch(BASE+'/storage/v1/object/sign/'+bucket+'/'+encoded,{method:'POST',headers:{apikey:SECRET,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:900}),signal:AbortSignal.timeout(10000)});
+   if(!r.ok)return reply(502,{error:'IMAGE_UNAVAILABLE'});const data=await r.json();const signed=data.signedURL||data.signedUrl;
+   if(typeof signed!=='string'||!signed.startsWith('/object/sign/'))throw Error('INVALID_SIGNED_URL');
+   return reply(200,{url:BASE+'/storage/v1'+signed,expires:Date.now()+840000});
+  }
+  if(b.action==='cart'){
+   if(!uuid(b.session_id))return reply(400,{error:'INVALID_SESSION'});
+   return reply(200,(await rest('nsl_admin_carts?select=items,updated_at&session_id=eq.'+b.session_id))[0]||null);
+  }
+  if(b.action==='retry_safe')return reply(200,{retried:await rest('rpc/nsl_admin_retry_safe','POST',{})});
+  if(b.action==='finance'){
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(b.day)||['revenue','ads','generation','printing','other'].some(k=>typeof b[k]!=='number'||!Number.isFinite(b[k])||b[k]<(k==='revenue'?-10000000:0)||b[k]>10000000))return reply(400,{error:'INVALID_COSTS'});
+   const data={day:b.day,revenue:b.revenue,ads:b.ads,generation:b.generation,printing:b.printing,other:b.other,updated_at:new Date().toISOString()};
+   const exists=await rest('nsl_admin_finance?select=day&day=eq.'+b.day);await rest('nsl_admin_finance'+(exists.length?'?day=eq.'+b.day:''),exists.length?'PATCH':'POST',data);return reply(200,{ok:true});
+  }
+  if(b.action==='complaint_add'){
+   if(typeof b.subject!=='string'||!b.subject.trim()||b.subject.length>200||typeof b.email!=='string'||b.email.length>200)return reply(400,{error:'INVALID_COMPLAINT'});
+   await rest('nsl_admin_complaints','POST',{subject:b.subject.trim(),email:b.email.trim()||null});return reply(200,{ok:true});
+  }
+  if(b.action==='complaint_resolve'&&uuid(b.id)){await rest('nsl_admin_complaints?id=eq.'+b.id,'PATCH',{resolved:true});return reply(200,{ok:true});}
+  return reply(400,{error:'UNKNOWN_ACTION'});
+ }catch(e){console.error('admin-dashboard',e instanceof Error?e.message:'request failed');return reply(500,{error:'REQUEST_FAILED'});}
+});
