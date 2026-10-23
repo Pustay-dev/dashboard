@@ -47,3 +47,11 @@ Handled errors are recorded separately from generation job status. Marking an er
 Additional validation: expired customer credential refresh and cart synchronization tests passed. Deletion preview, revocation and relational cleanup were checked with a synthetic session inside a fully rolled-back database transaction. No real customer was deleted.
 
 Cart rows show a 62 × 82 pixel preview opening the original and the selected dimensions instead of the product name. New snapshots capture the creator’s dimension metadata; existing snapshots use the three current catalogue variant mappings. Pointer clicks have no focus ring; keyboard focus uses a neutral gray outline.
+
+## 23 October runtime fixes and pending approval
+
+Production logs identified `permission denied for table users` during deletion. The cleanup SQL no longer joins Auth internals; anonymous-account verification uses the Auth admin API. The next real-role test found missing DELETE permissions on `private.gallery_contacts` and `private.portrait_generation_submissions`. Automatic approval review rejected both that permission grant and a cascading-delete alternative. Neither was applied. `pending-session-cleanup.sql` contains the exact two-table grant awaiting explicit user approval. Until applied, the read-only readiness check blocks new deletions before revocation or file removal and the UI displays the reason. Earlier postgres-role fixture tests did not establish service-role readiness.
+
+The storefront switched back to theme `nechsenakreslit - 2`, which lacks the observer loader. Install the existing script line in that live theme; Shopify connector writes to MAIN are blocked. The new observer groups the entire Shopify cart by portrait session, including older galleries. A valid signed checkout reference can authorize observation of its exact selected image/variant when the current customer login no longer owns that gallery. References are verified using the existing checkout HMAC, expire after seven days, and are never stored in snapshots. This write-only capability exposes no private images or account data. Unverifiable groups are skipped without losing valid groups.
+
+Regression tests cover grouped carts, old-gallery checkout references, invalid references and false empty-cart clearing. Full live deletion remains pending the explicit backend permission approval.

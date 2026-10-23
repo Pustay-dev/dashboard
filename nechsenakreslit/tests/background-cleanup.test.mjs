@@ -3,7 +3,7 @@ let handler,finish=false,releaseStorage;const tasks=[];
 globalThis.Deno={env:{get:k=>k==='SUPABASE_URL'?'https://test.supabase.co':'secret'},serve:f=>handler=f};globalThis.EdgeRuntime={waitUntil:p=>tasks.push(p)};
 globalThis.fetch=async(url,opts)=>{
  const u=String(url);
- if(u.endsWith('/auth/v1/user'))return Response.json({id:'admin',email:'admin@example.com',email_confirmed_at:'today'});
+ if(String(url).endsWith('/rpc/nsl_admin_deletion_ready'))return Response.json(true);if(u.endsWith('/auth/v1/user'))return Response.json({id:'admin',email:'admin@example.com',email_confirmed_at:'today'});
  if(u.includes('/nsl_admin_members?'))return Response.json([{}]);
  if(u.includes('/nsl_admin_deletions?'))return Response.json([{attempts:0}]);
  if(u.endsWith('/rpc/nsl_admin_delete_session')){const b=JSON.parse(opts.body);if(b.p_phase==='finish'){finish=true;return Response.json({deleted:true});}return Response.json({files:[{bucket:'previews',path:'session/image.webp'}],auth_ids:[]});}

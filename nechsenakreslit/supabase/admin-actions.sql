@@ -39,7 +39,7 @@ begin
  if exists(select 1 from public.generation_jobs where session_id=s.id and (status not in('completed','failed','cancelled') or provider_submission_state in('accepted','unknown'))) then raise exception 'SESSION_HAS_ACTIVE_JOBS'; end if;
  if exists(select 1 from public.uploads where session_id=s.id and status='uploading' and updated_at>now()-interval '15 minutes') then raise exception 'SESSION_HAS_ACTIVE_UPLOAD'; end if;
  select coalesce(jsonb_agg(jsonb_build_object('bucket',bucket_id,'path',name)),'[]') into manifest from storage.objects where left(name,length(s.id::text)+1)=s.id::text||'/';
- select coalesce(jsonb_agg(a.auth_user_id),'[]') into auths from public.session_access a join auth.users u on u.id=a.auth_user_id where a.session_id=s.id and u.is_anonymous and not exists(select 1 from public.session_access other where other.auth_user_id=a.auth_user_id and other.session_id<>s.id);
+ select coalesce(jsonb_agg(a.auth_user_id),'[]') into auths from public.session_access a where a.session_id=s.id and not exists(select 1 from public.session_access other where other.auth_user_id=a.auth_user_id and other.session_id<>s.id);
  if p_phase='preview' then
   return jsonb_build_object('session_id',s.id,'label',coalesce(s.admin_label,'USER-'||lpad(s.internal_number::text,4,'0')),'images',(select count(*) from public.images where session_id=s.id),'uploads',(select count(*) from public.uploads where session_id=s.id),'jobs',(select count(*) from public.generation_jobs where session_id=s.id),'files',jsonb_array_length(manifest),'anonymous_logins',jsonb_array_length(auths),'scope','This session, its gallery, uploads, cart and contact details. Other sessions and Shopify orders are not deleted. Only anonymous aggregate generation totals are kept.');
  elsif p_phase='begin' then
@@ -76,3 +76,9 @@ grant execute on function public.nsl_admin_delete_session(uuid,text,text) to ser
 
 -- Durable background cleanup leases and retry reporting.
 alter table public.nsl_admin_deletions add column if not exists lease_until timestamptz, add column if not exists attempts integer not null default 0, add column if not exists last_error text;
+
+
+-- Read-only readiness check; grants in pending-session-cleanup.sql require approval.
+create or replace function public.nsl_admin_deletion_ready() returns boolean language sql stable security invoker set search_path='' as $$ select has_table_privilege(current_user,'private.gallery_contacts','delete') and has_table_privilege(current_user,'private.portrait_generation_submissions','delete') $$;
+revoke all on function public.nsl_admin_deletion_ready() from public,anon,authenticated;
+grant execute on function public.nsl_admin_deletion_ready() to service_role;
