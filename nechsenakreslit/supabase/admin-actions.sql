@@ -78,7 +78,7 @@ grant execute on function public.nsl_admin_delete_session(uuid,text,text) to ser
 alter table public.nsl_admin_deletions add column if not exists lease_until timestamptz, add column if not exists attempts integer not null default 0, add column if not exists last_error text;
 
 
--- Read-only readiness check; grants in pending-session-cleanup.sql require approval.
+-- Read-only readiness check; approved grants are recorded in backend-cleanup-permissions.sql.
 create or replace function public.nsl_admin_deletion_ready() returns boolean language sql stable security invoker set search_path='' as $$ select has_table_privilege(current_user,'private.gallery_contacts','delete') and has_table_privilege(current_user,'private.portrait_generation_submissions','delete') $$;
 revoke all on function public.nsl_admin_deletion_ready() from public,anon,authenticated;
 grant execute on function public.nsl_admin_deletion_ready() to service_role;
