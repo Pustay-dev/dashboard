@@ -6,6 +6,39 @@ async function rest(path:string,method='GET',body?:unknown){
  const r=await fetch(BASE+'/rest/v1/'+path,{method,headers:{apikey:SECRET,'Content-Type':'application/json',Prefer:'return=representation'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000)});
  if(!r.ok){const d=await r.json().catch(()=>({}));const known=['SESSION_NOT_FOUND','SESSION_HAS_ORDERS','SESSION_HAS_ACTIVE_JOBS','SESSION_HAS_ACTIVE_UPLOAD','STORAGE_FILES_REMAIN','DELETION_NOT_STARTED'];throw Error(known.find(x=>String(d.message||'').includes(x))||'DATABASE_REQUEST_FAILED');}return r.status===204?null:r.json();
 }
+
+declare const EdgeRuntime:{waitUntil:(task:Promise<unknown>)=>void};
+async function cleanupSession(sessionId:string,adminEmail:string,adminId:string){
+ let claimed=false;
+ try{
+  const at=new Date(),lease=new Date(at.getTime()+180000).toISOString();
+  const rows=await rest('nsl_admin_deletions?session_id=eq.'+sessionId+'&or=(lease_until.is.null,lease_until.lt.'+at.toISOString()+')','PATCH',{lease_until:lease,last_error:null});
+  if(!rows.length)return;claimed=true;
+  const attempt=Number(rows[0].attempts||0)+1;
+  await rest('nsl_admin_deletions?session_id=eq.'+sessionId,'PATCH',{attempts:attempt});
+  const plan=await rest('rpc/nsl_admin_delete_session','POST',{p_session_id:sessionId,p_phase:'begin',p_actor:adminEmail});
+   const buckets=new Map<string,string[]>();
+   for(const f of plan.files){if(!buckets.has(f.bucket))buckets.set(f.bucket,[]);buckets.get(f.bucket)!.push(f.path);}
+   for(const [bucket,paths] of buckets){
+    for(let i=0;i<paths.length;i+=100){
+     const r=await fetch(BASE+'/storage/v1/object/'+encodeURIComponent(bucket),{method:'DELETE',headers:{apikey:SECRET,'Content-Type':'application/json'},body:JSON.stringify({prefixes:paths.slice(i,i+100)}),signal:AbortSignal.timeout(15000)});
+     if(!r.ok)throw Error('FILE_DELETE_FAILED_RETRY');
+    }
+   }
+   for(const id of plan.auth_ids){
+    if(!uuid(id)||id===adminId)continue;
+    if((await rest('session_access?select=session_id&auth_user_id=eq.'+id+'&limit=1')).length)continue;
+    const r=await fetch(BASE+'/auth/v1/admin/users/'+id,{method:'DELETE',headers:{apikey:SECRET,'Content-Type':'application/json'},signal:AbortSignal.timeout(10000)});
+    if(!r.ok&&r.status!==404)throw Error('LOGIN_DELETE_FAILED_RETRY');
+   }
+
+  await rest('rpc/nsl_admin_delete_session','POST',{p_session_id:sessionId,p_phase:'finish',p_actor:adminEmail});
+ }catch(e){
+  const error=e instanceof Error?e.message:'CLEANUP_FAILED';console.error('session-cleanup',error);
+  if(claimed)await rest('nsl_admin_deletions?session_id=eq.'+sessionId,'PATCH',{lease_until:null,last_error:error}).catch(()=>{});
+ }
+}
+
 Deno.serve(async(req:Request)=>{
  const origin=req.headers.get('origin')||'',h={'Access-Control-Allow-Origin':origins.has(origin)?origin:'https://jakub.pustay.cz','Access-Control-Allow-Headers':'authorization,apikey,content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin','Cache-Control':'no-store','Content-Type':'application/json','X-Content-Type-Options':'nosniff'};
  const reply=(status:number,data:unknown)=>new Response(JSON.stringify(data),{status,headers:h});
@@ -24,7 +57,7 @@ Deno.serve(async(req:Request)=>{
    if(!uuid(b.session_id)||!Array.isArray(b.items)||b.items.length>100)return reply(400,{error:'INVALID_CART'});
    const access=await rest('session_access?select=session_id&session_id=eq.'+b.session_id+'&auth_user_id=eq.'+encodeURIComponent(user.id));
    if(!access.length)return reply(403,{error:'SESSION_ACCESS_DENIED'});
-   const items=b.items.map((i:any)=>({image_id:i.image_id,variant_id:String(i.variant_id).slice(0,30),title:String(i.title||'Portrait').slice(0,160),quantity:Number(i.quantity),price:Number(i.price)}));
+   const items=b.items.map((i:any)=>({image_id:i.image_id,variant_id:String(i.variant_id).slice(0,30),title:String(i.title||'Portrait').slice(0,160),size:String(i.size||'').slice(0,80),quantity:Number(i.quantity),price:Number(i.price)}));
    if(items.some((i:any)=>!uuid(i.image_id)||!Number.isInteger(i.quantity)||i.quantity<1||i.quantity>100||!Number.isFinite(i.price)||i.price<0))return reply(400,{error:'INVALID_CART'});
    if(items.length){const ids=items.map((i:any)=>i.image_id).join(',');const owned=await rest('images?select=id&session_id=eq.'+b.session_id+'&id=in.('+ids+')');if(items.some((i:any)=>!owned.some((x:any)=>x.id===i.image_id)))return reply(403,{error:'IMAGE_ACCESS_DENIED'});}
    // Cart values are observational, never a source of paid revenue.
@@ -43,23 +76,17 @@ Deno.serve(async(req:Request)=>{
   if(b.action==='delete_session'){
    if(!uuid(b.session_id)||b.confirmation!==b.session_id)return reply(400,{error:'DELETE_CONFIRMATION_REQUIRED'});
    const plan=await rest('rpc/nsl_admin_delete_session','POST',{p_session_id:b.session_id,p_phase:'begin',p_actor:user.email});
-   const buckets=new Map<string,string[]>();
-   for(const f of plan.files){if(!buckets.has(f.bucket))buckets.set(f.bucket,[]);buckets.get(f.bucket)!.push(f.path);}
-   for(const [bucket,paths] of buckets){
-    for(let i=0;i<paths.length;i+=100){
-     const r=await fetch(BASE+'/storage/v1/object/'+encodeURIComponent(bucket),{method:'DELETE',headers:{apikey:SECRET,'Content-Type':'application/json'},body:JSON.stringify({prefixes:paths.slice(i,i+100)}),signal:AbortSignal.timeout(15000)});
-     if(!r.ok)return reply(502,{error:'FILE_DELETE_FAILED_RETRY'});
-    }
-   }
-   for(const id of plan.auth_ids){
-    if(!uuid(id)||id===user.id)continue;
-    if((await rest('session_access?select=session_id&auth_user_id=eq.'+id+'&limit=1')).length)continue;
-    const r=await fetch(BASE+'/auth/v1/admin/users/'+id,{method:'DELETE',headers:{apikey:SECRET,'Content-Type':'application/json'},signal:AbortSignal.timeout(10000)});
-    if(!r.ok&&r.status!==404)return reply(502,{error:'LOGIN_DELETE_FAILED_RETRY'});
-   }
-   return reply(200,await rest('rpc/nsl_admin_delete_session','POST',{p_session_id:b.session_id,p_phase:'finish',p_actor:user.email}));
+   await rest('nsl_admin_deletions?session_id=eq.'+b.session_id,'PATCH',{attempts:0,last_error:null});
+   EdgeRuntime.waitUntil(cleanupSession(b.session_id,user.email,user.id));
+   return reply(202,{accepted:true,session_id:b.session_id});
   }
-  if(b.action==='snapshot')return reply(200,await rest('rpc/nsl_admin_snapshot','POST',{}));
+  if(b.action==='snapshot'){
+   const data=await rest('rpc/nsl_admin_snapshot','POST',{});
+   const jobs=await rest('nsl_admin_deletions?select=session_id,confirmed_by,attempts,last_error');
+   data.deleting_sessions=jobs.map((j:any)=>j.session_id);data.deletion_issues=jobs.filter((j:any)=>j.last_error).map((j:any)=>({session_id:j.session_id}));
+   for(const job of jobs)if(job.attempts<3)EdgeRuntime.waitUntil(cleanupSession(job.session_id,job.confirmed_by,user.id));
+   return reply(200,data);
+  }
   if(b.action==='label'){
    if(!uuid(b.session_id)||typeof b.label!=='string'||b.label.trim().length>80)return reply(400,{error:'INVALID_LABEL'});
    await rest('sessions?id=eq.'+b.session_id,'PATCH',{admin_label:b.label.trim()||null});return reply(200,{ok:true});

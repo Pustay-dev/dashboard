@@ -73,3 +73,6 @@ begin
 end $$;
 revoke all on function public.nsl_admin_delete_session(uuid,text,text) from public,anon,authenticated;
 grant execute on function public.nsl_admin_delete_session(uuid,text,text) to service_role;
+
+-- Durable background cleanup leases and retry reporting.
+alter table public.nsl_admin_deletions add column if not exists lease_until timestamptz, add column if not exists attempts integer not null default 0, add column if not exists last_error text;

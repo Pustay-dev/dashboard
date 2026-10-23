@@ -26,7 +26,7 @@
    const state=await visitor();if(!state)return;
    const root=window.Shopify?.routes?.root||'/';const r=await nativeFetch(root+'cart.js',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error('CART_READ_'+r.status);
    const cart=await r.json();if(!Array.isArray(cart.items))throw Error('INVALID_CART_RESPONSE');
-   const items=cart.items.filter(i=>i.properties?._portrait_session===state.session_id&&i.properties?._portrait_image).map(i=>({image_id:i.properties._portrait_image,variant_id:String(i.variant_id),title:i.product_title||i.title,quantity:i.quantity,price:i.final_price??i.price}));
+   const items=cart.items.filter(i=>i.properties?._portrait_session===state.session_id&&i.properties?._portrait_image).map(i=>({image_id:i.properties._portrait_image,variant_id:String(i.variant_id),title:i.product_title||i.title,size:document.querySelector('nsl-portrait-creator [data-size] option[value=\"'+String(i.variant_id)+'\"]')?.dataset?.dimensions||i.options_with_values?.find(o=>/size|velikost|rozm[eě]r/i.test(o.name))?.value||i.variant_title||'',quantity:i.quantity,price:i.final_price??i.price}));
    const signature=JSON.stringify({session_id:state.session_id,items});if(signature===last&&Date.now()-lastSent<60000)return;
    const sent=await nativeFetch(base+'/functions/v1/admin-dashboard',{method:'POST',headers:{apikey:key,Authorization:'Bearer '+state.auth.access_token,'Content-Type':'application/json'},body:JSON.stringify({action:'cart_sync',session_id:state.session_id,items}),signal:AbortSignal.timeout(10000)});
    if(!sent.ok){const data=await sent.json().catch(()=>({}));throw Error(data.error||'SNAPSHOT_'+sent.status);}

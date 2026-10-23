@@ -17,3 +17,8 @@ export function selectSessions(rows,{sort='activity',filter='active',search=''}=
  return rows.filter(predicates[filter]||predicates.active).filter(s=>!q||[s.admin_label,s.default_label,s.id].some(x=>String(x||'').toLowerCase().includes(q))).sort((a,b)=>(compare||compareActivity)(a,b)||a.id.localeCompare(b.id));
 }
 const compareActivity=(a,b)=>Date.parse(b.last_activity||0)-Date.parse(a.last_activity||0);
+
+export function cartSize(item){
+ const known={'58853928042840':'45 × 30 cm','58772755317080':'60 × 40 cm','58772755284312':'60 × 90 cm'};
+ return (/\d+\s*[×x]\s*\d+/.test(item.size||'')?item.size:known[String(item.variant_id)])||item.size||'Size unavailable';
+}
