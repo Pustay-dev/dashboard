@@ -114,6 +114,14 @@ test('future sessions and rest days cannot be marked skipped',async()=>{
  await click({goDate:'2026-10-18'});assert(!html().includes('data-skip-workout'));await click({},['data-skip-workout']);assert.equal(JSON.stringify(record('body').skippedWorkouts||[]),before);
 });
 
+test('Reports imports a private key, decrypts the feed, and keeps Today to shortcuts',async()=>{
+ const {generateKeyPairSync}=await import('node:crypto'),{encryptSnapshot}=await import('../report-wall/publish.mjs');
+ const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048}),privateJwk=privateKey.export({format:'jwk'});
+ const key={format:'jakub-report-wall-key-v1',keyId:'integration-test',privateKey:privateJwk},feed={version:1,updatedAt:new Date().toISOString(),tasks:[{id:'report-test',title:'Daily test report',enabled:true,schedule:'BEGIN:VEVENT\nDTSTART;TZID=Europe/Prague:20261001T100000\nRRULE:FREQ=DAILY\nEND:VEVENT',timingMode:'exact_schedule',timezone:'Europe/Prague',conversationId:'6accb471-05c8-83eb-9850-02da915abf49',latestResult:{createdAt:new Date().toISOString(),contentText:'**Decrypted sample content**'}}]};
+ const envelope=encryptSnapshot(feed,{keyId:key.keyId,publicKey:publicKey.export({format:'jwk'})}),originalFetch=fetchImplementation;fetchImplementation=async()=>({ok:true,json:async()=>envelope});go('reports');assert(html().includes('reports-key-file'));
+ try{await listeners['#app:change']({target:{id:'reports-key-file',files:[{text:async()=>JSON.stringify(key)}]}});assert(html().includes('Decrypted sample content'));assert(html().includes('Open in ChatGPT'));go('today');await click({},['data-today']);assert(html().includes('Daily test report'));assert(!html().includes('Decrypted sample content'));assert(!JSON.stringify(record('body')).includes(privateJwk.d))}finally{fetchImplementation=originalFetch}
+});
+
 test('Settings displays the real connection failure instead of only saying offline',async()=>{
  const originalFetch=fetchImplementation,OriginalFormData=globalThis.FormData;fetchImplementation=async()=>{throw new TypeError('Load failed')};
  globalThis.FormData=class{get(){return 'test-only'}};go('settings');

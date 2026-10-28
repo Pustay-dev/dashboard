@@ -1,3 +1,5 @@
+import {decryptReports} from './report-wall/crypto.js';
+import {shortcutsMarkup,reportsMarkup} from './report-wall/view.js';
 import {ROADMAP} from './roadmap-data.js';
 import {PLAN,WEEK} from './workout-data.js';
 import {Records,requestWithTimeout} from './storage.js?v=20261019-7';
@@ -23,6 +25,16 @@ async function refreshMorning(url=morningUrl()){
 function difficultyMarkup(w){const entry=store.get('body').workoutFeedback?.[feedbackKey(selected,w.id)],rated=Number.isInteger(entry?.difficulty);return `<div class="workout-feedback"><div class="row"><label for="workout-difficulty">How hard was it?</label><output id="difficulty-value" for="workout-difficulty" aria-live="polite">${rated?entry.difficulty+' / 5':'Not rated'}</output></div><input id="workout-difficulty" type="range" min="1" max="5" step="1" value="${rated?entry.difficulty:3}" data-feedback-date="${selected}" data-feedback-type="${esc(w.id)}" aria-label="Workout difficulty" aria-valuetext="${rated?entry.difficulty+' out of 5':'Not rated; move to choose'}"><div class="difficulty-scale"><small>1 · Easy</small><small>5 · Very hard</small></div><button class="quiet clear-rating" type="button" data-clear-difficulty ${rated?'':'disabled'}>Clear rating</button></div>`}
 function weeklyFeedbackMarkup(){const key=weekStart(selected),saved=store.get('body').weeklyFeedback?.[key]?.note||'',note=weeklyDrafts[key]??saved;return `<details class="weekly-feedback"><summary>Next week${saved?' · note saved':''}</summary><div class="details-body"><label for="weekly-feedback">What should we change next week? <small>Optional</small></label><textarea id="weekly-feedback" data-week="${key}" rows="3" maxlength="1000" placeholder="Less volume, different exercises, more time for meditation…">${esc(note)}</textarea><small>Saved when you leave the field. Uses your existing cloud sync.</small></div></details>`}
 
+let reportFeed=null,reportState='locked',reportLoading=false;
+function savedReportsKey(){try{return JSON.parse(localStorage.getItem('jp_reports_key')||'null')}catch{return null}}
+async function refreshReports(importedKey=null){const key=importedKey||savedReportsKey();if(!key||reportLoading)return;reportLoading=true;reportState='Refreshing reports…';
+ try{if(!reportFeed&&!importedKey){const cached=JSON.parse(localStorage.getItem('jp_reports_envelope')||'null');if(cached)try{reportFeed=await decryptReports(cached,key)}catch{}}
+  const res=await requestWithTimeout(fetch,'report-wall/reports.enc.json?v='+Date.now(),{cache:'no-store'},20000);if(!res.ok)throw Error('Could not load reports ('+res.status+').');const envelope=await res.json(),decoded=await decryptReports(envelope,key);
+  if(importedKey)localStorage.setItem('jp_reports_key',JSON.stringify(key));localStorage.setItem('jp_reports_envelope',JSON.stringify(envelope));reportFeed=decoded;reportState='ready';
+ }catch(error){reportState=reportFeed?'Could not refresh. Showing the last saved reports.':importedKey?'Could not unlock reports. Check that you selected your reports key file.':error.message||'Could not load reports.'}
+ finally{reportLoading=false;if(!document.activeElement?.matches?.('input,textarea,select'))render()}
+}
+function renderReports(){const id=new URLSearchParams(location.hash.split('?')[1]||'').get('task')||'';return heading('Reports')+reportsMarkup(reportFeed,reportState,id)}
 const outgoingActivities=new Set();
 let taskDraft={name:'',target:'',date:null},quickDraft={text:'',target:'15'};
 const addingDate=()=>selected>=dayKey()?selected:dayKey();
@@ -44,7 +56,7 @@ function loadFor(r){return store.get('body').exerciseLoads?.[r.name]||r.load||''
 function workoutCard(){const w=currentWorkout();return `<section class="card"><div class="card-head"><h2>${selected===dayKey()?"Today’s workout":'Workout'}</h2><a href="#workout">Open ↗</a></div><span class="chip ${w.duration?'orange':''}">${w.duration?w.duration+' min · '+esc(w.place):'Rest day'}</span><h3 class="workout-title">${esc(w.name)}</h3>${w.note?'<p class="note">'+esc(w.note)+'</p>':''}<div class="workout-list">${w.rows.map(r=>`<div class="exercise"><small>${esc(r.time)}</small><div><h3>${esc(r.name)}</h3><p>${esc(r.sets)}${r.rest?' · '+esc(r.rest)+' rest':''}</p>${loadFor(r)?'<p class="weight-label">'+esc(loadFor(r))+'</p>':''}</div></div>`).join('')}</div>${w.duration?`<div class="completion"><small>${store.get('body').workouts.some(x=>x.date===selected&&x.type===w.id)?'✓ Done':(store.get('body').skippedWorkouts||[]).some(x=>x.date===selected&&x.type===w.id)?'Skipped':'Not logged'}</small><a class="button" href="#workout">View & log →</a></div>`:''}</section>`}
 const measureFields=[['weight','Weight','kg'],['waist','Waist','cm'],['chest','Chest','cm'],['arm','Arm','cm'],['thigh','Thigh','cm']];
 function measureCard(){const b=store.get('body'),m=latestValues(b.measurements,measureFields.map(x=>x[0]));return `<section class="card home-measure"><div class="card-head"><h2>Measurements</h2>${route()==='measurements'?'':'<a href="#measurements">Add entry ↗</a>'}</div><div class="metrics">${measureFields.slice(0,3).map(([k,n,u])=>`<div class="metric"><small>${n}</small><strong>${m[k]??'—'} <small style="display:inline">${u}</small></strong></div>`).join('')}</div>${!b.measurements.length?'<p class="note">No measurements recorded yet.</p>':''}</section>`}
-function renderHome(){return heading(selected===dayKey()?'Today':shortDate(selected),true)+`<div class="grid"><div class="stack">${checkCard()}${roadCard()}</div><div class="stack">${workoutCard()}${measureCard()}</div></div>`}
+function renderHome(){return heading(selected===dayKey()?'Today':shortDate(selected),true)+shortcutsMarkup(reportFeed,selected)+`<div class="grid"><div class="stack">${checkCard()}${roadCard()}</div><div class="stack">${workoutCard()}${measureCard()}</div></div>`}
 function trackMarkup(){const t=roadmapStatus(store.get('road'));return `<div class="track-status ${t.behind?'behind':'on-track'}">${t.behind?`${t.count} overdue · ${t.days} day${t.days===1?'':'s'} behind`:'On track'}</div>`}
 function todoMarkup(){const date=addingDate();return `<section class="card"><div class="row"><h2>Quick task</h2><small>${date===dayKey()?'Today':shortDate(date)}</small></div><form id="todo-form" class="quick-form section-space"><input name="text" value="${esc(quickDraft.text)}" placeholder="Task" aria-label="Quick task" maxlength="300" required><label class="quick-minutes">Minutes<input name="target" type="number" value="${esc(quickDraft.target)}" min="1" max="100000" inputmode="numeric" required></label><button class="primary">Add</button></form></section>`}
 function activityFormMarkup(){const s=store.get('check');return `<section class="card"><h2>Add a task</h2><form id="activity-form" class="form-grid section-space"><label class="wide">Task<input name="name" value="${esc(taskDraft.name)}" maxlength="100" required></label><label>Minutes<input name="target" type="number" value="${esc(taskDraft.target)}" min="1" max="100000" inputmode="numeric" required></label><label>Date<input name="date" type="date" min="${dayKey()}" value="${esc(taskDraft.date||addingDate())}" required></label><button class="primary">Add task</button></form>${s.pending.length?'<div class="scheduled-list"><h3>Scheduled</h3>'+s.pending.slice().sort((a,b)=>a.scheduledFor.localeCompare(b.scheduledFor)).map(a=>`<div class="row task"><div><h3>${esc(a.name)}</h3><small>${shortDate(a.scheduledFor)} · ${mins(a.target)}</small></div><button class="quiet" data-cancel-pending="${esc(a.id)}" aria-label="Cancel ${esc(a.name)}">×</button></div>`).join('')+'</div>':''}</section>`}
@@ -58,9 +70,9 @@ function render(){if(rendering||outgoingActivities.size)return;rendering=true;
  const opened=[...document.querySelectorAll('details[open][data-phase]')].map(d=>d.dataset.phase),scroll=window.scrollY;
  const p=Math.round(roadPct(store.get('road')));const track=roadmapStatus(store.get('road'));$('#roadmap-pct').textContent=p+'% · '+(track.behind?track.count+' overdue':'On track');$('#global-progress').setAttribute('aria-valuenow',p);$('#global-progress i').style.width=p+'%';
  const states=Object.values(store.slots).map(s=>s.status);$('#cloud-status').textContent=states.includes('conflict')?'Sync needs attention':states.includes('offline')?'Cloud sync failed':states.includes('pending')?'Saving…':states.every(x=>x==='synced')?'Cloud synced':'On this device';
- const r=route();document.title=(r==='today'?'':({ 'check-in':'Check-in',roadmap:'Roadmap',workout:'Workout',measurements:'Measurements',settings:'Settings'}[r]||'')+' · ')+'jakub.pustay';
+ const r=route();document.title=(r==='today'?'':({ 'check-in':'Check-in',roadmap:'Roadmap',workout:'Workout',measurements:'Measurements',reports:'Reports',settings:'Settings'}[r]||'')+' · ')+'jakub.pustay';
  document.querySelectorAll('nav a').forEach(a=>{if(a.hash==='#'+r)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
- const views={today:renderHome,'check-in':renderCheck,roadmap:renderRoad,workout:renderWorkout,measurements:renderMeasurements,settings:renderSettings};
+ const views={today:renderHome,'check-in':renderCheck,roadmap:renderRoad,workout:renderWorkout,measurements:renderMeasurements,reports:renderReports,settings:renderSettings};
  $('#app').innerHTML=(!storageOK?'<div class="warning">Browser storage is unavailable. Export a backup before closing.</div>':'')+(states.includes('conflict')&&r!=='settings'?'<div class="warning">Local changes are safe. Cloud sync needs attention in <a href="#settings"><u>Settings</u></a>.</div>':'')+(views[r]||renderHome)();
  if(r==='roadmap'&&opened.length){document.querySelectorAll('[data-phase]').forEach(d=>d.open=opened.includes(d.dataset.phase))}
  window.scrollTo(0,scroll);rendering=false;
@@ -97,6 +109,7 @@ $('#app').addEventListener('click',async e=>{const b=e.target.closest('button');
  if(b.hasAttribute('data-skip-workout')){const w=currentWorkout();if(selected>dayKey()||!w.duration)return;const state=store.get('body');if(state.workouts.some(x=>x.date===selected&&x.type===w.id))return;edit('body',s=>{s.skippedWorkouts=s.skippedWorkouts||[];if(!s.skippedWorkouts.some(x=>x.date===selected&&x.type===w.id))s.skippedWorkouts.push({date:selected,type:w.id,plan:clone(w),skippedAt:new Date().toISOString()})});toast('Workout marked as skipped')}
  if(b.hasAttribute('data-undo-skip')){edit('body',s=>s.skippedWorkouts=(s.skippedWorkouts||[]).filter(x=>!(x.date===selected&&x.type===workoutId())));toast('Skip removed')}
  if(b.hasAttribute('data-remove-workout'))edit('body',s=>s.workouts=s.workouts.filter(x=>!(x.date===selected&&x.type===workoutId())));
+ if(b.hasAttribute('data-refresh-reports'))await refreshReports();
  if(b.hasAttribute('data-export'))download(store.export());
  if(b.hasAttribute('data-sync')){b.disabled=true;await store.connect(store.key);normalize();render();toast(!store.key?'Add your cloud key first':Object.values(store.slots).every(s=>s.status==='synced')?'Cloud synced':'See the connection details below')}
  if(b.dataset.useCloud&&confirm('Replace this local copy with the cloud copy? Export a backup first.')){try{await store.useCloud(b.dataset.useCloud);normalize();render();toast('Cloud copy loaded')}catch(e){toast(e.message)}}
@@ -107,6 +120,7 @@ function saveDifficulty(el){if(el.dataset.feedbackDate>dayKey())return;const pre
 $('#app').addEventListener('pointerup',e=>{if(e.target.id==='workout-difficulty')saveDifficulty(e.target)});
 $('#app').addEventListener('keyup',e=>{if(e.target.id==='workout-difficulty'&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(e.key))saveDifficulty(e.target)});
 $('#app').addEventListener('change',async e=>{const el=e.target;captureTaskDraft(el);
+ if(el.id==='reports-key-file'&&el.files?.[0]){try{const key=JSON.parse(await el.files[0].text());await refreshReports(key)}catch{reportState='Could not read the key file. Choose jakub-reports-key.json.';render()}return}
  if(el.id==='workout-difficulty')saveDifficulty(el)
  if(el.id==='weekly-feedback'){edit('body',s=>setWeeklyNote(s,el.dataset.week,el.value));delete weeklyDrafts[el.dataset.week]}
  if(el.id==='view-date'&&/^\d{4}-\d{2}-\d{2}$/.test(el.value)){selected=el.value;taskDraft.date=null;workoutOverride=null;render()}
@@ -127,7 +141,9 @@ window.addEventListener('storage',e=>{if(e.key?.startsWith('jp_')&&e.key!=='jp_c
 window.addEventListener('online',()=>{if(store.key)store.connect(store.key)});
 let lastToday=dayKey();
 function checkDate(){const now=dayKey();if(now!==lastToday){if(selected===lastToday)selected=now;lastToday=now;workoutOverride=null;normalize();render();if(store.key)store.connect(store.key);refreshMorning()}}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkDate()});setInterval(checkDate,30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkDate();refreshReports()}});setInterval(checkDate,30000);
+refreshReports();
+setInterval(()=>{if(!document.hidden)refreshReports()},600000);
 normalize();render();if(store.key)store.connect(store.key).then(()=>{normalize();render()});
 
 refreshMorning();

@@ -43,3 +43,7 @@ Completed activities are crossed out and flicked right from Today, with a brief 
 ## Skipped workouts
 
 Use “Skip workout” beside Save workout for today or an earlier active session. Skips appear in Today, the weekly view and combined workout history, with a separate count. Undo skip removes the mark; saving a completed workout replaces its skip. Rest days and future sessions cannot be skipped. `body.skippedWorkouts` stores date/type and a prescription snapshot separately from completed `body.workouts`, so the existing completion count and AI performance log do not mistake a skip for exercise. Skips use the existing JSONBin sync and backup/import flow.
+
+## Reports
+
+Reports is a separate encrypted wall of enabled ChatGPT scheduled chats. Today has date-aware shortcuts only. Import `jakub-reports-key.json` once per browser on the Reports page; the key is kept locally and is excluded from dashboard backups. The public source stores only a public encryption key and ciphertext. Existing scheduled chats export their normal response and other recorded results after each run; the daily chat supplies the daily refresh without an additional task slot. See report-wall/README.md for the export protocol and run-status semantics.

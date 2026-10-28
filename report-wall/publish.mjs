@@ -1,0 +1,6 @@
+// stdin: normalized private report snapshot. stdout: encrypted envelope ONLY.
+import {readFile} from 'node:fs/promises';
+import {createPublicKey,randomBytes,publicEncrypt,createCipheriv,constants} from 'node:crypto';
+import {validSnapshot} from './model.js';
+export function encryptSnapshot(snapshot,config){if(!validSnapshot(snapshot))throw Error('Invalid report snapshot');const key=randomBytes(32),iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);const ciphertext=Buffer.concat([cipher.update(JSON.stringify(snapshot),'utf8'),cipher.final(),cipher.getAuthTag()]);const wrappedKey=publicEncrypt({key:createPublicKey({key:config.publicKey,format:'jwk'}),oaepHash:'sha256',padding:constants.RSA_PKCS1_OAEP_PADDING},key);return {version:1,keyId:config.keyId,updatedAt:snapshot.updatedAt,wrappedKey:wrappedKey.toString('base64'),iv:iv.toString('base64'),ciphertext:ciphertext.toString('base64')}}
+if(process.argv[1]&&import.meta.url===new URL('file://'+process.argv[1]).href){const chunks=[];for await(const chunk of process.stdin)chunks.push(chunk);const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));const config=JSON.parse(await readFile(new URL('./public-key.json',import.meta.url),'utf8'));process.stdout.write(JSON.stringify(encryptSnapshot(input,config),null,2)+'\n')}
