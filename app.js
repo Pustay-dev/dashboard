@@ -1,5 +1,5 @@
 import {decryptReports} from './report-wall/crypto.js';
-import {shortcutsMarkup,reportsMarkup} from './report-wall/view.js';
+import {shortcutsMarkup,reportsMarkup} from './report-wall/view.js?v=20261031-2';
 import {ROADMAP} from './roadmap-data.js';
 import {PLAN,WEEK} from './workout-data.js';
 import {Records,requestWithTimeout} from './storage.js?v=20261019-7';
