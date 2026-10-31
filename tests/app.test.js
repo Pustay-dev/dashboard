@@ -127,3 +127,18 @@ test('Settings displays the real connection failure instead of only saying offli
  globalThis.FormData=class{get(){return 'test-only'}};go('settings');
  try{await listeners['#app:submit']({preventDefault(){},target:{id:'cloud-form',querySelector:()=>({disabled:false})}});assert(html().includes('Network request failed'));assert(html().includes('Load failed'));assert(html().includes('cloud-error'))}finally{fetchImplementation=originalFetch;globalThis.FormData=OriginalFormData}
 });
+
+
+test('account sign-in migrates this browser’s setup and sign-out hides private views without losing records',async()=>{
+ const saved=new Map(map),originalFetch=fetchImplementation,OriginalFormData=globalThis.FormData;let settings={},revision=0;
+ map.set('jp_cloud_key','browser-test-key');map.delete('jp_morning_url');const before=JSON.stringify(record('body'));
+ fetchImplementation=async(url,options={})=>{
+  if(url.includes('/auth/v1/token'))return {ok:true,json:async()=>({access_token:'test-token',refresh_token:'test-refresh',expires_in:3600,user:{id:'owner-fixture',email:'owner@example.com'}})};
+  if(url.includes('/auth/v1/logout'))return {ok:true,json:async()=>({})};
+  if(url.includes('/rest/v1/jp_dashboard_accounts')){if(options.method==='PATCH'){const update=JSON.parse(options.body);settings=update.settings;revision=update.revision}return {ok:true,json:async()=>[{settings,revision}]}};
+  if(url.includes('api.jsonbin.io')){const kind=url.includes('6a9b3c7')?'check':url.includes('6a9a937')?'road':'body';return {ok:true,json:async()=>({record:record(kind)})}};
+  throw Error('Unexpected test URL');
+ };
+ globalThis.FormData=class{get(k){return {email:'owner@example.com',password:'never-stored-password'}[k]}};
+ try{go('settings');assert(html().includes('autocomplete="current-password"'));await listeners['#app:submit']({preventDefault(){},target:{id:'account-form',querySelector(){return {value:''}}}});assert(html().includes('Your account'));assert(html().includes('Setup saved to your account'));assert.equal(settings.jsonbinKey,'browser-test-key');assert(settings.reportsKey);assert(!map.get('jp_account_session').includes('never-stored-password'));await click({},['data-account-signout']);assert.equal(map.get('jp_cloud_key'),undefined);assert.equal(map.get('jp_reports_key'),undefined);go('today');assert(html().includes('id="account-form"'));assert(!html().includes('Quick task'));assert(!html().includes('Daily test report'));assert.equal(node('#roadmap-pct').textContent,'—');assert.equal(JSON.stringify(record('body')),before)}finally{fetchImplementation=originalFetch;globalThis.FormData=OriginalFormData;map.clear();for(const [k,v]of saved)map.set(k,v)}
+});

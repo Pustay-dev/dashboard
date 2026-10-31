@@ -47,3 +47,5 @@ Use “Skip workout” beside Save workout for today or an earlier active sessio
 ## Reports
 
 Reports is a separate encrypted wall of enabled ChatGPT scheduled chats. Today has date-aware shortcuts only. Import `jakub-reports-key.json` once per browser on the Reports page; the key is kept locally and is excluded from dashboard backups. The public source stores only a public encryption key and ciphertext. Existing scheduled chats export their normal response and other recorded results after each run; the daily chat supplies the daily refresh without an additional task slot. See report-wall/README.md for the export protocol and run-status semantics.
+
+Account login restores connection settings across browsers and devices. See [account setup](account/README.md). Sign in once on an already configured browser using the same login as the portrait admin.
