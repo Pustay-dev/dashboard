@@ -1,6 +1,7 @@
-import {Account,localSettings,applySettings,SESSION_KEY} from './account/client.js?v=20261031-1';
+import {validSnapshot} from './report-wall/model.js?v=20261102-1';
+import {Account,localSettings,applySettings,SESSION_KEY} from './account/client.js?v=20261102-1';
 import {decryptReports} from './report-wall/crypto.js';
-import {shortcutsMarkup,reportsMarkup} from './report-wall/view.js?v=20261031-2';
+import {shortcutsMarkup,reportsMarkup} from './report-wall/view.js?v=20261102-1';
 import {ROADMAP} from './roadmap-data.js';
 import {PLAN,WEEK} from './workout-data.js';
 import {Records,requestWithTimeout} from './storage.js?v=20261019-7';
@@ -29,16 +30,26 @@ function weeklyFeedbackMarkup(){const key=weekStart(selected),saved=store.get('b
 const account=new Account(localStorage);
 let accountStatus='',accountBusy=false;
 const accountLocked=()=>!account.signedIn&&localStorage.getItem('jp_account_enabled')==='1';
-let reportFeed=null,reportState='locked',reportLoading=false;
+let reportFeed=null,reportState='locked',reportLoading=false,reportAgain=false;
 function savedReportsKey(){try{return JSON.parse(localStorage.getItem('jp_reports_key')||'null')}catch{return null}}
-async function refreshReports(importedKey=null){const key=importedKey||savedReportsKey();if(!key||reportLoading)return;reportLoading=true;reportState='Refreshing reports…';
- try{if(!reportFeed&&!importedKey){const cached=JSON.parse(localStorage.getItem('jp_reports_envelope')||'null');if(cached)try{reportFeed=await decryptReports(cached,key)}catch{}}
+async function refreshReports(importedKey=null){
+ if(accountLocked())return;if(reportLoading){reportAgain=true;return;}
+ const key=importedKey||savedReportsKey();if(!account.signedIn&&!key)return;
+ reportLoading=true;reportState='Refreshing reports…';
+ try{
+  if(account.signedIn&&!importedKey){
+   if(!reportFeed){try{const cached=JSON.parse(localStorage.getItem('jp_account_reports')||'null');if(cached?.userId===account.session.user_id&&validSnapshot(cached.feed))reportFeed=cached.feed}catch{}}
+   const feed=await account.reports();if(!validSnapshot(feed))throw Error('Scheduled reports are not available yet.');
+   if(!account.signedIn)return;
+   reportFeed=feed;reportState='ready';localStorage.setItem('jp_account_reports',JSON.stringify({userId:account.session.user_id,feed}));return;
+  }
+  if(!reportFeed&&!importedKey){const cached=JSON.parse(localStorage.getItem('jp_reports_envelope')||'null');if(cached)try{reportFeed=await decryptReports(cached,key)}catch{}}
   const res=await requestWithTimeout(fetch,'report-wall/reports.enc.json?v='+Date.now(),{cache:'no-store'},20000);if(!res.ok)throw Error('Could not load reports ('+res.status+').');const envelope=await res.json(),decoded=await decryptReports(envelope,key);
   if(importedKey)localStorage.setItem('jp_reports_key',JSON.stringify(key));localStorage.setItem('jp_reports_envelope',JSON.stringify(envelope));reportFeed=decoded;reportState='ready';
- }catch(error){reportState=reportFeed?'Could not refresh. Showing the last saved reports.':importedKey?'Could not unlock reports. Check that you selected your reports key file.':error.message||'Could not load reports.'}
- finally{reportLoading=false;if(!document.activeElement?.matches?.('input,textarea,select'))render()}
+ }catch(error){reportState=reportFeed?'Could not refresh. Showing the last saved reports.':error.message||'Could not load reports.'}
+ finally{reportLoading=false;if(!document.activeElement?.matches?.('input,textarea,select'))render();else store.needsRender=true;if(reportAgain){reportAgain=false;void refreshReports()}}
 }
-function renderReports(){const id=new URLSearchParams(location.hash.split('?')[1]||'').get('task')||'';return heading('Reports')+reportsMarkup(reportFeed,reportState,id)}
+function renderReports(){const id=new URLSearchParams(location.hash.split('?')[1]||'').get('task')||'';return heading('Reports')+reportsMarkup(reportFeed,reportState,id,new Date(),account.signedIn)}
 const outgoingActivities=new Set();
 let taskDraft={name:'',target:'',date:null},quickDraft={text:'',target:'15'};
 const addingDate=()=>selected>=dayKey()?selected:dayKey();
@@ -60,7 +71,7 @@ function loadFor(r){return store.get('body').exerciseLoads?.[r.name]||r.load||''
 function workoutCard(){const w=currentWorkout();return `<section class="card"><div class="card-head"><h2>${selected===dayKey()?"Today’s workout":'Workout'}</h2><a href="#workout">Open ↗</a></div><span class="chip ${w.duration?'orange':''}">${w.duration?w.duration+' min · '+esc(w.place):'Rest day'}</span><h3 class="workout-title">${esc(w.name)}</h3>${w.note?'<p class="note">'+esc(w.note)+'</p>':''}<div class="workout-list">${w.rows.map(r=>`<div class="exercise"><small>${esc(r.time)}</small><div><h3>${esc(r.name)}</h3><p>${esc(r.sets)}${r.rest?' · '+esc(r.rest)+' rest':''}</p>${loadFor(r)?'<p class="weight-label">'+esc(loadFor(r))+'</p>':''}</div></div>`).join('')}</div>${w.duration?`<div class="completion"><small>${store.get('body').workouts.some(x=>x.date===selected&&x.type===w.id)?'✓ Done':(store.get('body').skippedWorkouts||[]).some(x=>x.date===selected&&x.type===w.id)?'Skipped':'Not logged'}</small><a class="button" href="#workout">View & log →</a></div>`:''}</section>`}
 const measureFields=[['weight','Weight','kg'],['waist','Waist','cm'],['chest','Chest','cm'],['arm','Arm','cm'],['thigh','Thigh','cm']];
 function measureCard(){const b=store.get('body'),m=latestValues(b.measurements,measureFields.map(x=>x[0]));return `<section class="card home-measure"><div class="card-head"><h2>Measurements</h2>${route()==='measurements'?'':'<a href="#measurements">Add entry ↗</a>'}</div><div class="metrics">${measureFields.slice(0,3).map(([k,n,u])=>`<div class="metric"><small>${n}</small><strong>${m[k]??'—'} <small style="display:inline">${u}</small></strong></div>`).join('')}</div>${!b.measurements.length?'<p class="note">No measurements recorded yet.</p>':''}</section>`}
-function renderHome(){return heading(selected===dayKey()?'Today':shortDate(selected),true)+shortcutsMarkup(reportFeed,selected)+`<div class="grid"><div class="stack">${checkCard()}${roadCard()}</div><div class="stack">${workoutCard()}${measureCard()}</div></div>`}
+function renderHome(){return heading(selected===dayKey()?'Today':shortDate(selected),true)+shortcutsMarkup(reportFeed,selected,account.signedIn,reportState)+`<div class="grid"><div class="stack">${checkCard()}${roadCard()}</div><div class="stack">${workoutCard()}${measureCard()}</div></div>`}
 function trackMarkup(){const t=roadmapStatus(store.get('road'));return `<div class="track-status ${t.behind?'behind':'on-track'}">${t.behind?`${t.count} overdue · ${t.days} day${t.days===1?'':'s'} behind`:'On track'}</div>`}
 function todoMarkup(){const date=addingDate();return `<section class="card"><div class="row"><h2>Quick task</h2><small>${date===dayKey()?'Today':shortDate(date)}</small></div><form id="todo-form" class="quick-form section-space"><input name="text" value="${esc(quickDraft.text)}" placeholder="Task" aria-label="Quick task" maxlength="300" required><label class="quick-minutes">Minutes<input name="target" type="number" value="${esc(quickDraft.target)}" min="1" max="100000" inputmode="numeric" required></label><button class="primary">Add</button></form></section>`}
 function activityFormMarkup(){const s=store.get('check');return `<section class="card"><h2>Add a task</h2><form id="activity-form" class="form-grid section-space"><label class="wide">Task<input name="name" value="${esc(taskDraft.name)}" maxlength="100" required></label><label>Minutes<input name="target" type="number" value="${esc(taskDraft.target)}" min="1" max="100000" inputmode="numeric" required></label><label>Date<input name="date" type="date" min="${dayKey()}" value="${esc(taskDraft.date||addingDate())}" required></label><button class="primary">Add task</button></form>${s.pending.length?'<div class="scheduled-list"><h3>Scheduled</h3>'+s.pending.slice().sort((a,b)=>a.scheduledFor.localeCompare(b.scheduledFor)).map(a=>`<div class="row task"><div><h3>${esc(a.name)}</h3><small>${shortDate(a.scheduledFor)} · ${mins(a.target)}</small></div><button class="quiet" data-cancel-pending="${esc(a.id)}" aria-label="Cancel ${esc(a.name)}">×</button></div>`).join('')+'</div>':''}</section>`}
@@ -73,12 +84,12 @@ function accountCard(){return `<section class="card settings-card account-card">
 async function restoreAccount(force=false){if(!account.signedIn||accountBusy)return;accountBusy=true;accountStatus='Loading your setup…';store.onchange();try{
  const oldUrl=morningUrl(),oldReports=localStorage.getItem('jp_reports_key'),settings=await account.reconcile(localSettings(localStorage));applySettings(localStorage,settings);
  const key=localStorage.getItem('jp_cloud_key')||'';if(key!==store.key||force)await store.connect(key);
- if(oldReports!==localStorage.getItem('jp_reports_key')){reportFeed=null;localStorage.removeItem('jp_reports_envelope');await refreshReports()}
+ if(oldReports!==localStorage.getItem('jp_reports_key')){reportFeed=null;localStorage.removeItem('jp_reports_envelope')}await refreshReports();
  if(oldUrl!==morningUrl()){morningPlan=null;localStorage.removeItem('jp_morning_plan');if(morningUrl())await refreshMorning()}
  normalize();accountStatus='Setup saved to your account.';
  }catch(error){accountStatus=error.message||'Could not load your setup. Your local records are safe.'}finally{accountBusy=false;store.onchange()}}
 async function saveAccountSetup(changes){if(!account.signedIn)return;try{await account.save(changes);accountStatus='Setup saved to your account.'}catch(error){accountStatus='Saved on this device. '+(error.message||'Retry account sync.')}store.onchange()}
-async function signOutAccount(){const signingOut=account.signOut();applySettings(localStorage,{jsonbinKey:'',morningUrl:'',reportsKey:null});store.key='';reportFeed=null;reportState='locked';morningPlan=null;localStorage.removeItem('jp_reports_envelope');localStorage.removeItem('jp_morning_plan');accountStatus='';render();await signingOut}
+async function signOutAccount(){const signingOut=account.signOut();applySettings(localStorage,{jsonbinKey:'',morningUrl:'',reportsKey:null});store.key='';reportFeed=null;reportState='locked';morningPlan=null;localStorage.removeItem('jp_reports_envelope');localStorage.removeItem('jp_account_reports');localStorage.removeItem('jp_morning_plan');accountStatus='';render();await signingOut}
 function renderSettings(){const conflicts=Object.entries(store.slots).filter(([,s])=>s.status==='conflict');return heading('Settings')+accountCard()+`<section class="card settings-card"><h2>Cloud connection</h2><p class="note">Connect your existing JSONBin records. Sign in to save the connection to your private account. Backups do not contain keys.</p><form id="cloud-form" class="inline-form"><input name="key" type="password" aria-label="JSONBin master key" placeholder="JSONBin master key" autocomplete="off" value="${esc(store.key)}"><button class="primary">Connect</button></form><div class="section-space">${Object.entries(store.slots).map(([k,s])=>`<div class="row task"><span>${{check:'Check-in',road:'Roadmap',body:'Measurements & workouts'}[k]}</span><small>${esc({local:'On this device',pending:'Waiting to sync',synced:'Synced',conflict:'Cloud conflict',offline:'Sync failed · saved locally'}[s.status])}</small></div>${s.status==='offline'&&s.error?`<p class="cloud-error" role="status">${esc(s.error)}</p>`:''}`).join('')}</div><button data-sync class="section-space">Retry sync</button>${conflicts.map(([k])=>`<div class="warning section-space">${{check:'Check-in',road:'Roadmap',body:'Body records'}[k]} has different cloud and local copies. Export a backup before choosing the cloud copy.<div class="actions"><button data-use-cloud="${k}">Use cloud copy</button></div></div>`).join('')}</section><section class="card settings-card"><h2>Backup</h2><p class="note">All check-ins, roadmap progress, measurements and workout logs.</p><div class="actions"><button data-export>Export backup</button><label class="button file-label">Import backup<input id="import-backup" type="file" accept="application/json,.json"></label></div><p class="note">Signing in restores your connections on a new browser or domain. Backups remain available for recovery.</p></section><section class="card settings-card"><h2>Workout plan</h2><p class="note">Your fixed schedule remains the fallback. Connect the weekly morning workflow to use AI adjustments.</p><form id="morning-form" class="inline-form"><input name="url" type="url" aria-label="Morning workflow Production URL" placeholder="Morning workflow Production URL" value="${esc(morningUrl())}"><button class="primary">Connect</button></form><p class="note">${esc(morningStatus||'Optional · use the same Production URL as your iPad shortcut. Keep this URL private.')}</p></section>`}
 function render(){if(rendering||outgoingActivities.size)return;rendering=true;
  const opened=[...document.querySelectorAll('details[open][data-phase]')].map(d=>d.dataset.phase),scroll=window.scrollY;
@@ -155,13 +166,13 @@ $('#app').addEventListener('submit',async e=>{e.preventDefault();checkDate();con
  if(f.id==='cloud-form'){const key=fd.get('key').trim();const btn=f.querySelector('button');btn.disabled=true;await store.connect(key);if(!key||Object.values(store.slots).every(s=>s.status==='synced'))await saveAccountSetup({jsonbinKey:key});normalize();render();toast(!key?'Cloud disconnected':Object.values(store.slots).every(s=>s.status==='synced')?'Cloud synced':Object.values(store.slots).some(s=>s.status==='offline')?'Sync failed — see the error below':'Sync needs attention')}
 });
 window.addEventListener('hashchange',()=>{workoutOverride=null;render();window.scrollTo(0,0);$('#app').focus({preventScroll:true})});
-window.addEventListener('storage',e=>{if(e.key===SESSION_KEY){try{account.session=JSON.parse(localStorage.getItem(SESSION_KEY)||'null')}catch{account.session=null}if(account.signedIn)void restoreAccount();else{store.key='';reportFeed=null;render()}return}if(['jp_check','jp_road','jp_body'].includes(e.key)){const dirty=Object.values(store.slots).some(s=>s.dirty);if(!dirty){store=new Records(defaults,localStorage);store.onchange=render;normalize();render()}}});
+window.addEventListener('storage',e=>{if(e.key===SESSION_KEY){try{account.session=JSON.parse(localStorage.getItem(SESSION_KEY)||'null')}catch{account.session=null}if(account.signedIn)void restoreAccount();else{store.key='';reportFeed=null;localStorage.removeItem('jp_account_reports');render()}return}if(['jp_check','jp_road','jp_body'].includes(e.key)){const dirty=Object.values(store.slots).some(s=>s.dirty);if(!dirty){store=new Records(defaults,localStorage);store.onchange=render;normalize();render()}}});
 window.addEventListener('online',()=>{if(!accountLocked()&&store.key)store.connect(store.key);void restoreAccount()});
 let lastToday=dayKey();
 function checkDate(){if(accountLocked())return;const now=dayKey();if(now!==lastToday){if(selected===lastToday)selected=now;lastToday=now;workoutOverride=null;normalize();render();if(!accountLocked()&&store.key)store.connect(store.key);refreshMorning()}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(!accountLocked())checkDate();refreshReports();void restoreAccount()}});setInterval(checkDate,30000);
 refreshReports();
-setInterval(()=>{if(!document.hidden)refreshReports()},600000);
+setInterval(()=>{if(!document.hidden)refreshReports()},60000);
 normalize();render();if(!accountLocked()&&store.key)store.connect(store.key).then(()=>{normalize();render()});
 
 refreshMorning();

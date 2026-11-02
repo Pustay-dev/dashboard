@@ -1,3 +1,9 @@
+# Scheduled reports
+
+Signed-in browsers now read the private Supabase account feed. Scheduled chats publish directly with connected tools and the pure JavaScript helper in `account-publisher.js`; see [delivery instructions](PUBLISH.md). No encryption job, GitHub data-file deployment, or imported reports key is needed for this path. The encrypted file remains a legacy fallback for browsers that have not enabled account login.
+
+Today shows due reports first, recent weekly updates next, and other schedules as Upcoming with their next date. Actual response dates remain visible; an old response is never relabeled as a new run. Report content refreshes once a minute while the site is visible, on foreground return, and via Refresh. Failed requests preserve the last saved feed. Account report cache is cleared on sign-out.
+
 # Private scheduled reports wall
 
 `reports.enc.json` is a public encrypted envelope, not a plaintext export. The private RSA key is delivered to Jakub as a private file and is never committed. Import the key once per browser in Reports. The key stays in that browser; it is not added to JSONBin records or ordinary dashboard backups. Retain the key file to unlock another device. The public key wraps a random AES-256-GCM key for each export; the browser decrypts with Web Crypto.
