@@ -8,7 +8,7 @@ export function dueOn(task,date){const r=parseSchedule(task);if(date<r.date||r.u
 export function scheduleLabel(task,referenceDate){const r=parseSchedule(task,referenceDate),names={MO:'Mon',TU:'Tue',WE:'Wed',TH:'Thu',FR:'Fri',SA:'Sat',SU:'Sun'},time=`${Math.floor(r.minutes/60).toString().padStart(2,'0')}:${(r.minutes%60).toString().padStart(2,'0')}`;const cadence=r.frequency==='DAILY'?(r.interval===1?'Daily':`Every ${r.interval} days`):r.days?.map(d=>names[d]||d).join(', ')||r.frequency.toLowerCase();return `${cadence} · ${task.timingMode==='flexible_schedule'?'around ':''}${time}`}
 export function nextDue(task,date){for(let i=0;i<370;i++){const d=shift(date,i);if(dueOn(task,d))return d}return null}
 export function expectedDate(task,now=new Date()){const r=parseSchedule(task),p=localParts(now,r.timezone),grace=task.timingMode==='flexible_schedule'?60:0;for(let i=0;i<370;i++){const date=shift(p.date,-i);if(i===0&&p.minutes<r.minutes+grace)continue;if(dueOn(task,date))return date}return null}
-export const excludedTaskIds=new Set(['6accb490ecb881919047bb6a5505a745']);
+export const excludedTaskIds=new Set(['6accb490ecb881919047bb6a5505a745','6abd1c0e63b08191b921028fb12b4ea0']);
 export const visibleTasks=tasks=>tasks.filter(t=>t.enabled&&!excludedTaskIds.has(t.id));
 // Native task history may contain only the final export notice, after the report in an earlier message.
 export function exportNotice(result){const text=String(result?.contentText||'').trim();return text.length<700&&(/^(?:\*\*)?(?:Reports wall|Dashboard)(?:\*\*)?:?\s*(?:\*\*)?/i.test(text))&&/(?:export|encrypt|šifrov|nahrát)/i.test(text)}

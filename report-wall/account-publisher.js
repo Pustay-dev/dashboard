@@ -1,7 +1,7 @@
 // Pure JavaScript: runs in functions.exec without Node, packages, files or encryption keys.
 export function buildAccountSnapshot(records,previous=null,currentReport=null,updatedAt=new Date().toISOString()){
  if(!Array.isArray(records)||!Number.isFinite(Date.parse(updatedAt)))throw Error('Detailed automation records are required');
- const excluded=new Set(['6accb490ecb881919047bb6a5505a745']);
+ const excluded=new Set(['6accb490ecb881919047bb6a5505a745','6abd1c0e63b08191b921028fb12b4ea0']);
  const tasks=records.filter(t=>t.is_enabled&&!excluded.has(t.id)).map(t=>{
   if(!t.id||!t.title||!t.schedule||t.last_run_time&&!t.run_details)throw Error('Fetch detailed run records before publishing');
   const run=t.run_details?.last_run,r=t.run_details?.latest_result,old=previous?.tasks?.find(x=>x.id===t.id);

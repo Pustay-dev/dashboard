@@ -49,3 +49,9 @@ Use “Skip workout” beside Save workout for today or an earlier active sessio
 Reports is a separate encrypted wall of enabled ChatGPT scheduled chats. Today has date-aware shortcuts only. Import `jakub-reports-key.json` once per browser on the Reports page; the key is kept locally and is excluded from dashboard backups. The public source stores only a public encryption key and ciphertext. Existing scheduled chats export their normal response and other recorded results after each run; the daily chat supplies the daily refresh without an additional task slot. See report-wall/README.md for the export protocol and run-status semantics.
 
 Account login restores connection settings across browsers and devices. See [account setup](account/README.md). Sign in once on an already configured browser using the same login as the portrait admin.
+
+## Czech dashboard redesign
+
+Today is reached through the logo and contains roadmap progress, a horizontal strip of three-line report previews, check-in and the next three checkpoints. Workout includes seven compact weekdays, check-in with weights, collapsible week/history and measurement/performance subtabs. Required sessions become automatic skips only after the tracking feature's activation date. Optional mobility/rest sessions and older history are preserved. Roadmap checkpoints use done/undo; completed chapters are collapsed at the bottom.
+
+Daily business, Family and Workout publish to the existing private account feed. Family combines weekend ideas and the concert search. The separate concert schedule is paused. Report Refresh fetches the saved private feed and reports whether a newer version exists; rerunning native ChatGPT automations remains in ChatGPT, reached through each report's chat link. No external trigger is claimed.
