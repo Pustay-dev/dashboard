@@ -4,7 +4,7 @@ const origins=new Set(['https://jakub.pustay.cz','https://pustay-dev.github.io',
 const uuid=(x:unknown):x is string=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
 async function rest(path:string,method='GET',body?:unknown){
  const r=await fetch(BASE+'/rest/v1/'+path,{method,headers:{apikey:SECRET,'Content-Type':'application/json',Prefer:'return=representation'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000)});
- if(!r.ok){const d=await r.json().catch(()=>({}));console.error('admin-database',path.split('?')[0],d.code||'',String(d.message||'').slice(0,180));const known=['SESSION_NOT_FOUND','SESSION_HAS_ORDERS','SESSION_HAS_ACTIVE_JOBS','SESSION_HAS_ACTIVE_UPLOAD','STORAGE_FILES_REMAIN','DELETION_NOT_STARTED'];throw Error(known.find(x=>String(d.message||'').includes(x))||'DATABASE_REQUEST_FAILED');}return r.status===204?null:r.json();
+ if(!r.ok){const d=await r.json().catch(()=>({}));console.error('admin-database',path.split('?')[0],d.code||'',String(d.message||'').slice(0,180));const known=['SESSION_NOT_FOUND','SESSION_HAS_ORDERS','SESSION_HAS_ACTIVE_JOBS','SESSION_HAS_ACTIVE_UPLOAD','STORAGE_FILES_REMAIN','DELETION_NOT_STARTED','EDIT_CONFLICT','INVALID_STYLE_INPUT','REQUEST_ALREADY_QUEUED','FAMILY_REQUIRED'];throw Error(known.find(x=>String(d.message||'').includes(x))||'DATABASE_REQUEST_FAILED');}return r.status===204?null:r.json();
 }
 
 async function validCartReference(ref:unknown,sessionId:string,item:any){
@@ -84,7 +84,7 @@ Deno.serve(async(req:Request)=>{
   const userRes=await fetch(BASE+'/auth/v1/user',{headers:{apikey:SECRET,Authorization:auth},signal:AbortSignal.timeout(10000)});
   if(!userRes.ok)return reply(401,{error:'SIGN_IN_REQUIRED'});
   const user=await userRes.json();
-  const raw=await req.text();if(raw.length>40000)return reply(413,{error:'REQUEST_TOO_LARGE'});
+  const raw=await req.text();if(raw.length>260000)return reply(413,{error:'REQUEST_TOO_LARGE'});
   const b=JSON.parse(raw||'{}');
   if(b.action==='cart_sync'||b.action==='cart_sync_batch'){
    const groups=b.action==='cart_sync'?[b]:b.groups;
@@ -97,6 +97,12 @@ Deno.serve(async(req:Request)=>{
   if(user.is_anonymous||!user.email||!user.email_confirmed_at)return reply(403,{error:'ADMIN_ACCESS_REQUIRED'});
   const members=await rest('nsl_admin_members?select=email&email=eq.'+encodeURIComponent(user.email.toLowerCase()));
   if(!members.length)return reply(403,{error:'ADMIN_ACCESS_REQUIRED'});
+  if(b.action==='styles')return reply(200,await rest('rpc/nsl_admin_style_action','POST',{p_op:'list',p_data:{},p_actor:user.email}));
+  if(b.action==='style_action'){
+   if(!['detail','save','family','category','reference','example_hide','placement_remove','request'].includes(b.op)||!b.data||typeof b.data!=='object')return reply(400,{error:'INVALID_STYLE_INPUT'});
+   return reply(200,await rest('rpc/nsl_admin_style_action','POST',{p_op:b.op,p_data:b.data,p_actor:user.email}));
+  }
+  if(b.action==='analytics')return reply(200,await rest('rpc/nsl_admin_generation_analytics','POST',{}));
   if(b.action==='clear_errors')return reply(200,{handled:await rest('rpc/nsl_admin_clear_errors','POST',{})});
   if(b.action==='delete_preview'){
    if(!uuid(b.session_id))return reply(400,{error:'INVALID_SESSION'});
@@ -158,5 +164,5 @@ Deno.serve(async(req:Request)=>{
   }
   if(b.action==='complaint_resolve'&&uuid(b.id)){await rest('nsl_admin_complaints?id=eq.'+b.id,'PATCH',{resolved:true});return reply(200,{ok:true});}
   return reply(400,{error:'UNKNOWN_ACTION'});
- }catch(e){const code=e instanceof Error?e.message:'REQUEST_FAILED';console.error('admin-dashboard',code);if(['SESSION_NOT_FOUND','SESSION_HAS_ORDERS','SESSION_HAS_ACTIVE_JOBS','SESSION_HAS_ACTIVE_UPLOAD','STORAGE_FILES_REMAIN'].includes(code))return reply(409,{error:code});return reply(500,{error:'REQUEST_FAILED'});}
+ }catch(e){const code=e instanceof Error?e.message:'REQUEST_FAILED';console.error('admin-dashboard',code);if(['SESSION_NOT_FOUND','SESSION_HAS_ORDERS','SESSION_HAS_ACTIVE_JOBS','SESSION_HAS_ACTIVE_UPLOAD','STORAGE_FILES_REMAIN'].includes(code))return reply(409,{error:code});if(['EDIT_CONFLICT','REQUEST_ALREADY_QUEUED','FAMILY_REQUIRED','INVALID_STYLE_INPUT'].includes(code))return reply(409,{error:code});return reply(500,{error:'REQUEST_FAILED'});}
 });

@@ -13,3 +13,4 @@ jobs:
           node-version: '22'
       - run: npm test
       - run: node --check app.js && node --check core.js && node --check storage.js
+      - run: npm ci --prefix nechsenakreslit && npm test --prefix nechsenakreslit

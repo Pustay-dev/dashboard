@@ -1,0 +1,1 @@
+{"name":"nechsenakreslit-admin","private":true,"type":"module","scripts":{"test":"node --experimental-strip-types --test model.test.js tests/*.test.mjs"},"devDependencies":{"linkedom":"0.18.12"}}
