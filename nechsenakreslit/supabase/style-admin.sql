@@ -93,3 +93,6 @@ create or replace function public.nsl_admin_generation_analytics() returns jsonb
 $$;
 revoke all on function public.nsl_admin_generation_analytics() from public,anon,authenticated;
 grant execute on function public.nsl_admin_generation_analytics() to service_role;
+-- Reference editing is confined to the server role; visitors have no write access.
+grant update(image_jpeg,prompt_suffix) on private.portrait_family_style_references to service_role;
+grant delete on private.portrait_family_style_references to service_role;
