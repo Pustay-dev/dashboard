@@ -99,7 +99,7 @@ Deno.serve(async(req:Request)=>{
   if(!members.length)return reply(403,{error:'ADMIN_ACCESS_REQUIRED'});
   if(b.action==='styles')return reply(200,await rest('rpc/nsl_admin_style_action','POST',{p_op:'list',p_data:{},p_actor:user.email}));
   if(b.action==='style_action'){
-   if(!['detail','save','family','category','reference','example_hide','placement_remove','request'].includes(b.op)||!b.data||typeof b.data!=='object')return reply(400,{error:'INVALID_STYLE_INPUT'});
+   if(!['detail','save','recommendations','family','category','reference','example_hide','placement_remove','request'].includes(b.op)||!b.data||typeof b.data!=='object')return reply(400,{error:'INVALID_STYLE_INPUT'});
    return reply(200,await rest('rpc/nsl_admin_style_action','POST',{p_op:b.op,p_data:b.data,p_actor:user.email}));
   }
   if(b.action==='analytics')return reply(200,await rest('rpc/nsl_admin_generation_analytics','POST',{}));

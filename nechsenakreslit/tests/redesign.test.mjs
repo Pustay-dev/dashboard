@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {parseHTML} from 'linkedom';
+import {installWorkspace} from '../style-workspace.js';
+const {document,window}=parseHTML(await readFile(new URL('../index.html',import.meta.url),'utf8'));
+Object.assign(globalThis,{document,window,innerWidth:1200,confirm:()=>true});
+const catalog={styles:[{id:'one',family_id:'a',display_name:'One',theme:'art',revision:1,updated_at:'2026-11-11',enabled:true,prompt:'Adapt',example_image_url:'https://example.com/1.webp',suggested_style_ids:['b']},{id:'two',family_id:'b',display_name:'Two',theme:'art',revision:1,enabled:true,prompt:'Adapt',example_image_url:'https://example.com/2.webp'}],families:[{id:'a',display_name:'Family A',enabled:true,base_prompt:'Shared',revision:1},{id:'b',display_name:'Family B',enabled:true,base_prompt:'Shared',revision:1}],placements:[],categories:[],themes:[],requests:[]};
+let details=0,resolveDetail;const calls=[],failures=[];
+const api=async(action,body)=>{calls.push({action,body});if(action==='styles')return structuredClone(catalog);if(action==='style_action'&&body.op==='detail'){details++;if(body.data.id==='two')return new Promise(resolve=>resolveDetail=resolve);return {examples:[],reference:null};}return {ok:true};};
+const settle=()=>new Promise(r=>setTimeout(r,8));
+const app=installWorkspace({api,action:async fn=>{try{await fn();}catch(e){failures.push(e)}},message:()=>{},getSnapshot:()=>({errors:[],deletion_issues:[]})});
+document.querySelector('[data-tab=styles]').click();await settle();document.querySelector('[data-style=one]').click();await settle();assert.equal(details,1);assert.equal(document.querySelectorAll('.recommendation-item').length,1);
+const input=document.querySelector('#variant-form input');input.value='Unsaved name';input.dispatchEvent(new window.Event('input',{bubbles:true}));const search=document.querySelector('#style-search');search.value='One';search.dispatchEvent(new window.Event('input'));assert.equal(document.querySelector('#variant-form input').value,'Unsaved name','filtering must preserve editor DOM and draft');assert.equal(details,1,'search must not refetch private references');
+document.querySelector('#close-style').click();document.querySelector('[data-style=one]').click();await settle();assert.equal(details,1,'reopening uses cache');
+document.querySelector('#recommendation-save').click();await settle();assert.ok(calls.some(x=>x.body?.op==='recommendations'&&x.body.data.ids[0]==='b'&&x.body.data.updated_at));
+document.querySelector('[data-tab=families]').click();await settle();assert.ok(document.querySelector('.family-card'));assert.equal(document.querySelectorAll('.family-card').length,1);document.querySelector('#style-search').value='';document.querySelector('#style-search').dispatchEvent(new window.Event('input'));assert.equal(document.querySelectorAll('.family-card').length,2);
+document.querySelector('[data-style=two]').click();await settle();assert.ok(resolveDetail);app.reset();resolveDetail({examples:[],reference:null});await settle();assert.equal(document.querySelector('#families-view').innerHTML,'','pending reads must not restore private data after signout');assert.equal(document.querySelector('#styles-view').innerHTML,'');assert.deepEqual(failures,[]);
+console.log('PASS: family grouping, persisted recommendations, editor draft preservation, detail request caching, signout race.');
